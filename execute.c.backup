@@ -1,0 +1,523 @@
+#include <stdint.h>
+#include <stdio.h>
+#include <stdbool.h>
+#include "core.h"
+#include "custom.h"
+#include "debug.h"
+#include "error.h"
+#include "execute.h"
+#include "globals.h"
+#include "tables.h"
+
+//Compare counted strings
+//Ok to pass in null-terminated string here as long as len1 and len2 don't include null terminator
+static bool py_cstrcmp(const char *str1, uint16_t len1, const char *str2, uint16_t len2)
+{
+    //Counted strings must match in length - mismatch
+    if (len1!=len2) return false;
+    
+    for (uint16_t i;i<len1;i++)
+    {
+        //Hit null terminator so return mismatch since at least one string is counted and therefore not null terminated
+        //Othwerwise, ok to pass in null-terminated string as long as len1 and len2 don't include null terminator
+        if ((!str1[i])||(!str2[i])) return false;
+
+        //Mismatch found
+        if (str1[i]!=str2[i]) return false;
+    }
+    //All characters match
+    return true;
+}
+
+//TODO: used?
+//Check if character is in string
+static bool py_strchr(const char *str, char ch, size_t size)
+{
+    for (uint16_t i=0;i<size;i++)
+    {
+        if (str[i]==ch) return true;
+    }
+    return false;
+}
+
+//Classify character of source
+static uint8_t py_classify_input(const char input_char)
+{ 
+    //Error on input characters 127-255
+    if (input_char>PY_CHAR_LAST_VALID) return INPUT_ERROR;
+
+    //Classify input character
+    uint8_t char_type=0;
+    uint16_t total=0;
+    const uint8_t *table=py_state_chars;
+    while(1)
+    {
+        total+=(*table)&PY_CHAR_MASK;   //Count of range in lower 4 bits of table entry
+        if (input_char<total)
+        {
+            //Character class found
+            return (*table)>>4;         //Character class in upper 4 bits of table entry
+            break;
+        }
+        table++;
+    }
+}
+
+static uint8_t py_lookup_op(char op)
+{
+    const char *op_list=py_op_lookup_keys;
+   
+    while (*op_list)
+    {
+        if (*op_list==op)
+        {
+            return py_op_lookup_vals[op_list-py_op_lookup_keys];
+        }
+        op_list++;
+    }
+}
+
+static uint8_t py_next_symbol(const char **text, uint16_t *len)
+{
+    bool processing=true;
+    uint8_t symbol_state=SYMBOL_NONE;
+
+    //Length of symbol - returned to caller
+    *len=0;
+
+    while (processing)
+    {
+        //Get next character of symbol
+        unsigned char input_char=*(*text+*len);
+
+        //Classify next character for input into symbol state machine
+        uint8_t char_type=py_classify_input(input_char);
+
+        //Error on characters marked error in character table
+        if (char_type==INPUT_ERROR) return SYMBOL_ERROR;
+
+        //Look up symbol state given current state and input character
+        uint8_t new_symbol_state=py_symbol_state[char_type][symbol_state/2];
+        if ((symbol_state&1)==0) new_symbol_state&=PY_SYMBOL_MASK;
+        else new_symbol_state>>=4;
+
+        //TODO: remove
+        /*
+        debug(">>>Input char: %c(%d). Length: %d. Type: %d - %s\n",input_char,input_char,*len,char_type,debug_value("symbol input type",char_type));
+        debug(">>>Old symbol state: %d - %s. New symbol state: %d - %s\n",symbol_state,debug_value("symbol type",symbol_state),new_symbol_state,debug_value("symbol type",new_symbol_state));
+        debug(">>>Look up: [%d][%d/2] = [%d][%d]\n",char_type,symbol_state,char_type,symbol_state/2);
+        debug_key();
+        */
+
+
+        //Error if lookup table returns error state
+        if (new_symbol_state==SYMBOL_ERROR) return SYMBOL_ERROR;
+
+        //Process new symbol state
+        if (new_symbol_state!=symbol_state)
+        {
+            //Symbol state of new character differs from current state
+            if (symbol_state==SYMBOL_NONE)
+            {
+                //Found beginning of symbol
+                *len=1;
+                symbol_state=new_symbol_state;
+
+                //Return immediately for these states
+                if (new_symbol_state>=SYMBOL_RETURN)
+                {
+                    return symbol_state;
+                }
+            }
+            else
+            {
+                //State changed after beginning of symbol - probably ready to return
+                if ((new_symbol_state==SYMBOL_HEX_PRE)||(new_symbol_state==SYMBOL_HEX))
+                {
+                    //Account for a few exceptions - state change here is not end of symbol so keep going
+                    (*len)++;
+                    symbol_state=new_symbol_state;
+                }
+                else
+                {
+                    //End of symbol found - return
+                    if (symbol_state==SYMBOL_ZERO)
+                    {
+                        //Correction for 0 when it's a number rather than hex prefix
+                        return SYMBOL_NUM;
+                    }
+                    else if (symbol_state==SYMBOL_STRING)
+                    {
+                        //Extend symbol to include closing quote
+                        (*len)++;
+                    }
+                    return symbol_state;
+                }
+            }
+        }
+        else
+        {
+            //New symbol state is same as old
+            if (symbol_state==SYMBOL_NONE) 
+            {
+                //Beginning of symbol not found yet - advance source pointer
+                (*text)++; 
+            }
+            else 
+            {
+                //Beginning of symbol found previously - advance length but not source pointer
+                (*len)++;
+            }
+        }
+    }
+}
+
+/* UNFINISHED! */
+static int16_t py_find_symbol(const char *symbol_begin,uint8_t symbol_len)
+{
+    //Find length of symbol
+    const char *symbol_len_ptr=symbol_begin;
+    
+    //Look for symbol in tables
+    const char *commands_ptr=py_commands;
+    uint16_t command_id=0;
+    while (*commands_ptr)
+    {
+        //Compare counted string lengths
+        if (*commands_ptr!=symbol_len)
+        {
+            //Length of symbol doesn't match length of command - skip
+            commands_ptr+=*commands_ptr+1;
+            command_id++;
+        }
+        else
+        {
+            //TODO: replace with py_cstrcmp
+
+            //Length of symbol matches length of command - compare letters
+            bool match=true;
+            for (int i=0;i<symbol_len;i++)
+            {
+                if (commands_ptr[i+1]!=symbol_begin[i])
+                {
+                    //Words don't match - skip command
+                    match=false;
+                    commands_ptr+=symbol_len+1;
+                    command_id++;
+                    break;
+                }
+            }
+            //Loop finished - symbol matches command. Return ID of command.
+            if (match) return command_id;
+        }
+    }
+
+    //TODO: change return from -1 since type is uint8_t
+
+    //Symbol not found
+    return -1;
+}
+
+//Only copy first byte into new stack space since many pushes are one byte and better not to buffer multi-byte writes
+static py_error_t py_push_custom(uint8_t data,uint16_t len)
+{
+    if (len>py_free) return py_error_set(PY_ERROR_OUT_OF_MEM);
+
+    py_sp-=len;
+    *py_tos=data;
+    py_sp_count++;
+
+    return PY_ERROR_NONE;
+}
+
+//Add symbol or token to output stream
+static uint8_t py_process(uint8_t symbol, uint8_t token)
+{
+}
+
+//Execute Python source passed in as a string
+py_error_t py_execute(const char *text)
+{
+    //Can't set error_num if uninitialized since stored in passed-in memory so return error code but don't set py_error_num
+    if (!py_settings.initialized) return PY_ERROR_UNINITIALIZED;
+    
+    /*
+    debug("Pre-heap: %u. Free: %u\n",PY_MEM_HEAP_BEGIN,py_free);
+    py_allocate(5);
+    debug("Pre-heap: %u. Free: %u\n",PY_MEM_HEAP_BEGIN,py_free);
+    py_allocate(7);
+    debug("Pre-heap: %u. Free: %u\n",PY_MEM_HEAP_BEGIN,py_free);
+    struct StackItem temp_stack_item;
+    py_push(temp_stack_item);
+    debug("Pre-heap: %u. Free: %u\n",PY_MEM_HEAP_BEGIN,py_free);
+    py_push_custom(0x42,3);
+    debug("Pre-heap: %u. Free: %u\n",PY_MEM_HEAP_BEGIN,py_free);
+
+    uint16_t temp=*(uint16_t*)py_heap_begin;
+    debug("%d ",temp);
+    temp=*(uint16_t*)(py_heap_begin+temp);
+    debug("%d ",temp);
+    temp=*(uint16_t*)(py_heap_begin+temp);
+    debug("%d ",temp);
+
+    debug_key();
+    */
+
+    uint8_t exec_flags=FLAG_RESET_STATE;
+    uint8_t symbol, last_symbol;
+    uint16_t symbol_len;
+    uint8_t op_token,last_op_token;
+    uint8_t interpreter_state;
+    uint8_t op_not_count;
+
+    do
+    {
+        //Reset state at beginning of every line
+        if (exec_flags&FLAG_RESET_STATE)
+        {
+            last_symbol=SYMBOL_NONE;
+            last_op_token=TOKEN_NONE;
+            interpreter_state=STATE_BEGIN;
+            op_not_count=0;
+            exec_flags&=~FLAG_RESET_STATE;
+        }
+
+        //Reset for each symbol
+        exec_flags&=~(FLAG_COMBO_FOUND|FLAG_FOUND_NOT);
+
+        //Get next symbol in source
+        symbol=py_next_symbol(&text,&symbol_len);
+        if (symbol==SYMBOL_ERROR) return py_error_set(PY_ERROR_INPUT);
+
+        //Reclassify operator words to SYMBOL_OP: and, in, or, not
+        if (symbol==SYMBOL_ALPHA)
+        {
+            for (uint16_t i=0;i<PY_OP_LOOKUP_KEYS_LONG_COUNT;i++)
+            {
+                //Compare symbol to symbol in list of word operators
+                //Note py_cstrcmp is for counted strings but works with null-terminated strings too
+                if (py_cstrcmp(text,symbol_len,py_op_lookup_keys_long[i]+1,py_op_lookup_keys_long[i][0]))
+                {
+                    //Symbol found
+                    symbol=SYMBOL_OP;
+                    op_token=py_op_lookup_vals_long[i];
+
+                    //TODO: remove
+                    /*
+                    //Replace 'not' separated by space then 'in' with 'not in' operator
+                    if (op_token==TOKEN_IN)
+                    {
+                        //last_op_token only set if SYMBOL_OP encountered so if last_symbol is SYMBOL_SPACE and
+                        //last_last_symbol is SYMBOL_OP, last_op_token correspondes to last_last_symbol not last_symbol
+                        if ((last_last_symbol==SYMBOL_OP)&&(last_op_token==TOKEN_BOOL_NOT))
+                        {
+                            if (last_symbol==SYMBOL_SPACE) op_token=TOKEN_NOT_IN;
+                        }
+                    }
+                    */
+
+                    //Handle not vs not in
+                    if ((op_token==TOKEN_IN)&&(op_not_count==1))
+                    {
+                        //op_not_count can only be 0 or 1 here. If 2, handled immediately below and set to 1.
+                        op_token=TOKEN_NOT_IN;
+                        op_not_count=0;
+                    }
+                    else if (op_token==TOKEN_BOOL_NOT)
+                    {
+                        op_not_count++;
+                        exec_flags|=FLAG_FOUND_NOT;
+                    }
+                    break;
+                }
+            }
+        }
+        else if (symbol==SYMBOL_OP)
+        {
+            //Look up token for single-character operators (word operators handled above)
+            op_token=py_lookup_op(*text);
+        }
+
+        //Recognize combined operators like >> and +=
+        if ((symbol==SYMBOL_OP)&&(last_symbol==SYMBOL_OP))
+        {
+            for (uint16_t i=0;i<PY_OP_COMBOS_COUNT;i++)
+            {
+                //TODO: magic numbers
+                if (py_op_combos[i][0]==last_op_token)
+                {
+                    if (py_op_combos[i][1]==op_token)
+                    {
+
+                        debug("Combo %d found! %s + %s = %s\n",i,debug_value("token",op_token),debug_value("token",last_op_token),debug_value("token",py_op_combos[i][2]));
+
+                        //Combination found
+                        op_token=py_op_combos[i][2];
+                        exec_flags|=FLAG_COMBO_FOUND;
+                        break;
+                    }
+                }
+            }
+        }
+
+        //Advance interpreter state
+        uint8_t input_token, input_symbol;
+        for (int i=0;i<2;i++)
+        {
+            exec_flags&=~FLAG_ADVANCE_STATE;
+            if (i==0)
+            {
+                //op_not_count==0 - only need to process if last_symbol was op
+                //op_not_count==1 - redundant since last_symbol is op if symbol is not op
+                //op_not_count==2 - redundant since last_symbol is NOT and therefore SYMBOL_OP
+                if (last_symbol==SYMBOL_OP)
+                {
+                    //Exception: do not process NOT before space since may be NOT IN
+                    if (!((symbol==SYMBOL_SPACE)&&(op_not_count==1)))
+                    {
+                        //Ignore case where ops were combined like >> since may be >>=
+                        if (!(exec_flags&FLAG_COMBO_FOUND))
+                        {
+                            //Exception: NOT found after non-NOT so keep and don't decrease count
+                            if (exec_flags&FLAG_FOUND_NOT) op_not_count=1;
+                            else if (op_not_count==2) op_not_count=1;
+                            else op_not_count=0;
+                            input_symbol=SYMBOL_OP;
+                            input_token=last_op_token;
+                            exec_flags|=FLAG_ADVANCE_STATE;
+                        }
+                    }
+                }
+            }
+            else if (i==1)
+            {
+                if ((symbol!=SYMBOL_OP)&&(symbol!=SYMBOL_SPACE))
+                {
+                    input_symbol=symbol;
+                    input_token=op_token;
+                    exec_flags|=FLAG_ADVANCE_STATE;
+                }
+            }
+
+            if (exec_flags&FLAG_ADVANCE_STATE)
+            {
+                switch (input_symbol)
+                {
+                    case SYMBOL_COMMENT:
+                    case SYMBOL_END_LINE:
+                        //Done processing line
+                        exec_flags|=FLAG_RESET_STATE;
+                        break;
+                    case SYMBOL_ALPHA: 
+                    case SYMBOL_NUM: 
+                    case SYMBOL_HEX: 
+                    case SYMBOL_STRING: 
+                        //Interpreter state machine handles all tokens so these four symbols are treated as a token
+                        input_token=TOKEN_SYMBOL;
+                        //Fallthrough
+                    case SYMBOL_OP:
+                        //Look up next state from table 
+
+                        debug("Starting state: %s, Token: %s, Result: ",debug_value("interpreter state",interpreter_state),debug_value("token",input_token));
+
+                        const uint8_t *table_ptr=py_state_table;
+                        uint8_t token_max=*table_ptr;
+                        while(1)
+                        {
+                            if (input_token<token_max)
+                            {
+                                //Table entry found - process 
+                                uint8_t rep_match1=*(table_ptr+2)&0xF;
+                                uint8_t rep_match2=*(table_ptr+2)>>4;
+                                uint8_t default_val=*(table_ptr+1)&0xF;
+                                uint8_t rep_val=*(table_ptr+1)>>4;
+                                if (interpreter_state==rep_match1) interpreter_state=rep_val;
+                                else if (interpreter_state==rep_match2) interpreter_state=rep_val;
+                                else interpreter_state=default_val;
+                                
+                                //Handle syntax errors
+                                //if (interpreter_state==STATE_ERROR) return py_error_set(PY_ERROR_INPUT);
+
+                                //Account for unary + and -
+                                if (interpreter_state==STATE_INV_NEG_PLUS)
+                                {
+                                    if (input_token==TOKEN_ADD) input_token=TOKEN_PLUS;
+                                    if (input_token==TOKEN_SUB) input_token=TOKEN_NEG;
+                                }
+
+                                debug("%s\n",debug_value("interpreter state",interpreter_state));
+
+                                break;
+                            }
+                            else
+                            {
+                                //No match found - advance to next entry
+                                table_ptr+=STATE_ENTRY_SIZE;
+                                token_max+=*table_ptr;
+                            }
+                        }
+                        break;
+                }
+
+                //Debugging
+                {
+                    if (i==0) debug("> Processed token: %s\n",debug_value("token",input_token));
+                    else
+                    {
+                        debug("> Processed symbol: ");
+                        for (int i=0;i<symbol_len;i++) debug("%c",text[i]);
+                        debug("\n");
+                    }
+                }
+                //Debugging
+            }
+        }
+
+        //Debugging
+        {
+            debug("%s\n",text);
+            debug("Type: %d - %s. Length: %d. Symbol: ",symbol,debug_value("symbol type",symbol),symbol_len);
+            for (int i=0;i<symbol_len;i++)
+            {
+                debug("%c",text[i]);
+            }
+            debug("\n");
+
+            if (symbol==SYMBOL_OP)
+            {
+                //TODO: changed above so op_token is never 255 now
+                debug(" - Token: %d",op_token);
+                if (op_token!=255) debug(" (%s)",debug_value("token",op_token));
+                debug("\n");
+            }
+            debug_key();
+        }
+        //Debugging
+
+        //Error if ! appears outside of !=
+        if ((last_symbol==SYMBOL_OP)&&(last_op_token==TOKEN_EXCLAM))
+        {
+            if (!((symbol==SYMBOL_OP)&&(op_token==TOKEN_NE))) return py_error_set(PY_ERROR_INPUT);
+        }
+
+        //Record last operator for combined operators like >> and +=
+        if (symbol==SYMBOL_OP)
+        {
+            last_op_token=op_token;
+        }
+        
+        //TODO: update - no longer using this for not in
+        //Record symbols to replace 'not in' with operator
+        last_symbol=symbol;
+
+        //Advance source pointer by size of symbol
+        text+=symbol_len;
+
+    } while(symbol!=SYMBOL_END_ALL);
+
+    //int symbol_id=py_find_symbol(text);
+
+    //if (symbol_id==-1) return py_error_set(PY_ERROR_UNDEFINED);
+
+    return PY_ERROR_NONE;
+}

@@ -1,0 +1,5 @@
+layout src
+disp/i $pc
+break main
+run
+

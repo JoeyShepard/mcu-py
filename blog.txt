@@ -1,0 +1,45 @@
+Look up tables
+- 1. commands
+- 2. state-symbols
+  - this was tricky! good example of why I prefer Python
+  - C will count size of columns but not rows :(
+  - cant have rows of differing sizes in 2D array
+  - C doesnt warn when row of 2D array is too small
+  - can create enum but takes time, may lead to error and even then how to use in debugging?
+    - did create debug_value function but wasting time here too
+- 3. state-chars
+  - interesting way to condense space
+- 4. debug
+  - loop through all messages to make sure not beyond end :/
+  - never did this in C before but useful though way more work than Python
+- very easy to maintain
+  - was filtering out space (except strings) but needed to change to return space to diff = =  from ==
+- later, added state table at 45 bytes
+
+
+C programming
+- may be less readable but I like the convenience of #define for offsets into py memory
+
+Python set up
+- mostly the same but some dfferences
+- custom error function
+  - havent implemented but maybe check return type to see if continue
+  - maybe not so great if function is C
+- not sure about how to track locals and globals
+  - godbolt seems to show they are just numbered
+  - figured out way which may be different internally than Python
+
+Differences
+- arg types evaluated at run time not compile time ie "a"+5
+- only ' is string
+- missing:
+  - is, is not
+  - lambda
+  - await
+  - //
+  - 6.10 chaining - didn't know about it and not adding
+
+Other
+- maybe mentioned above but debug.c was very helpful
+- rigamarole of 'not in' - first one system then slightly smaller system with 3 item window
+- did not need but figured out can interleave two stacks if obvious from data type

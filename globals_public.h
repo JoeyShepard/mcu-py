@@ -1,0 +1,5 @@
+#ifndef __GUARD_MCU_PY_GLOBALS_PUBLIC
+    #define __GUARD_MCU_PY_GLOBALS_PUBLIC
+
+
+#endif

@@ -1,0 +1,4 @@
+#ifndef __GUARD_MCU_PY_TABLES_PUBLIC
+    #define __GUARD_MCU_PY_TABLES_PUBLIC
+
+#endif

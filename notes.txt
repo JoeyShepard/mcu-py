@@ -1,0 +1,43 @@
+left to figure out
+- assigning variables especially when tuple
+  - option 1
+    - push all to stack then figure out when done
+  - option 2
+    - figure out as it goes
+    - try this with lookup table first
+      - see spreadsheet - this should just be top most level it seems so nesting is ignored
+  - solved?
+    - return is only one item not multiple
+    - comma just makes it into a tuple
+    - no stack of syntax states for dict in list - recalculate manually?
+
+
+variables
+- figured out system:
+    - each local variable in function is assigned an ID
+      - names are not preserved
+      - go down into stack and store ID with local offset and length in source
+        - keep info there until function definition done then free
+    - each global variable is assigned an ID too
+      - also store on stack but even further into stack than locals
+      - adding global shifts locals and rest of stack
+        - rest of stack used for pushing paren/brackets, ops, values
+      - names are preserved and stored in heap
+        - doesnt matter if global is defined or not when function is defined since assigned ID
+          - ID checked at run time to see if defined
+- more tests:
+    - works:
+    x=5
+    def foo(i):
+        if i==0:
+            print(x)
+
+    - errors: local var x ref before assignment (good, this makes it easier)
+    x=5
+    def foo(i):
+        if i==0:
+            print(x)
+        else:
+            x=7
+    
+
