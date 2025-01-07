@@ -582,9 +582,7 @@ py_error_t py_execute(const char *text)
                             num<<=4;
                             num+=(*num_ptr)-'0';
                             
-                            //Hmm, what to do about -128 or -(128)
-
-                            num_ptr;
+                            num_ptr++;
                         }
                         break;
                     case SYMBOL_STRING:
