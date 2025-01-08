@@ -124,7 +124,7 @@ static uint8_t py_next_symbol(const char **text, uint16_t *len)
                 *len=1;
                 symbol_state=new_symbol_state;
 
-                //Return immediately for these states
+                //Return immediately for states like END_LINE, END_ALL
                 if (new_symbol_state>=SYMBOL_RETURN)
                 {
                     return symbol_state;
@@ -222,12 +222,6 @@ static int16_t py_find_symbol(const char *symbol_begin,uint8_t symbol_len)
 static py_error_t py_token_push(uint8_t token)
 {
     if (py_free==0) return py_error_set(PY_ERROR_OUT_OF_MEM,0);
-
-    if (token==0)
-    {
-        debug("TOKEN 0 pushed - something is wrong!\n");
-        exit(1);
-    }
 
     py_sp-=1;
     *py_tos=token;
@@ -417,6 +411,7 @@ py_error_t py_execute(const char *text)
             }
         }
 
+        //TODO: size payoff?
         //Mark values (alpha, num, etc) for processing - simplifies logic below
         switch (symbol_queue[0].symbol)
         {
@@ -548,6 +543,8 @@ py_error_t py_execute(const char *text)
                 }
                
                 //Symbol ready to be compiled
+                int num=0;
+                const char *num_ptr=text;
                 switch (input_symbol)
                 {
                     case SYMBOL_END_LINE:
@@ -562,7 +559,10 @@ py_error_t py_execute(const char *text)
                         for (int j=0;j<count;j++)
                         {
                             stack_token=py_token_pop();
+
+                            //Debugging
                             debug("%s ",debug_value("token",stack_token));
+                            
                             if (py_find_precedence(stack_token)==PREC_OPENING)
                             {
                                 //If there is a ( [ or { at the end, error on missing } ] or )
@@ -573,17 +573,37 @@ py_error_t py_execute(const char *text)
                     case SYMBOL_ALPHA:
                         break;
                     case SYMBOL_HEX:
-                        break;
-                    case SYMBOL_NUM:
-                        int64_t num;
-                        uint8_t *num_ptr=text;
-                        for (int i=0;i<symbol_len;i++)
+                        num_ptr+=2;
+                        for (int i=0;i<symbol_len-2;i++)
                         {
                             num<<=4;
-                            num+=(*num_ptr)-'0';
-                            
+                            if ((*num_ptr>='0')&&(*num_ptr<='9')) num+=(*num_ptr)-'0';
+                            else if ((*num_ptr>='a')&&(*num_ptr<='z')) num+=(*num_ptr)-'a'+10;
+                            else if ((*num_ptr>='A')&&(*num_ptr<='Z')) num+=(*num_ptr)-'A'+10;
                             num_ptr++;
                         }
+
+                        //Debugging
+                        {
+                            debug("HEX: 0x%X\n",num);
+                        }
+                        //Debugging
+
+                        break;
+                    case SYMBOL_NUM:
+                        for (int i=0;i<symbol_len;i++)
+                        {
+                            num*=10;
+                            num+=(*num_ptr)-'0';
+                            num_ptr++;
+                        }
+
+                        //Debugging
+                        {
+                            debug("NUM: %d\n",num);
+                        }
+                        //Debugging
+
                         break;
                     case SYMBOL_STRING:
                         break;

@@ -12,7 +12,6 @@
         PY_ERROR_SYNTAX,            //Syntax error in source
         PY_ERROR_INTERNAL,          //Should never happen - problem is not from user's source 
         PY_ERROR_STACK_UNDERFLOW,   
-        PY_ERROR_VALUE_TOO_LARGE,   //Value in source doesn't fit int32
     };
 
 #endif

@@ -32,19 +32,17 @@
 - add keywords
   - list
   - try/except?
-  - is - never used but see how it's useful
   - add line and char number as args to error_handler
   - import? not for msp430
 - StackItem should just be pointer not struct
   - bit in pointer shows if int
     - (x<<1)>>1 extends sign!
     - actually, dont do this. dont want to detect overflow on all calculations
+- x="a""b" works in python
+- allocate and all other functions that can set error have error checking on return?
 
 IMPORTANT:
 - leading - MUST be part of number
-
-IMPORTANT:
-- (str)(16) works so can't detect function from just ALPHA and ]
 
 IMPORTANT:
 - keeping a list is not great but need it for globals
@@ -56,7 +54,7 @@ IMPORTANT:
 
 void test_error_handler(uint8_t e, uint16_t char_num)
 {
-    printf("Test error handler - error %d at character %d\n",e,char_num);
+    printf("Test error handler - error %d near character %d\n",e,char_num);
 
     return;
 }
