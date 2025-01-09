@@ -62,7 +62,7 @@
 
     //Memory management
     //=================
-    uint16_t py_allocate(uint16_t size);
+    uint8_t *py_allocate(uint16_t size);
 
 
     //Objects

@@ -41,7 +41,7 @@ py_error_t py_push(struct StackItem item)
 
 //Memory management
 //=================
-uint16_t py_allocate(uint16_t size)
+uint8_t *py_allocate(uint16_t size)
 {
     size+=sizeof(uint16_t);     //Two extra bytes for offset to next item
     if (size>py_free)
@@ -50,7 +50,7 @@ uint16_t py_allocate(uint16_t size)
         return 0;
     }
     *(uint16_t*)(py_heap_current)=size;
-    uint16_t ret_val=py_heap_ptr;
+    uint8_t *ret_val=py_heap_current;
     py_heap_ptr+=size;
     *(uint16_t*)(py_heap_current)=0;
     return ret_val;

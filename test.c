@@ -40,6 +40,8 @@
     - actually, dont do this. dont want to detect overflow on all calculations
 - x="a""b" works in python
 - allocate and all other functions that can set error have error checking on return?
+- track lines for errors instead of characters since characters not very accurate
+- if space, bytecode for multiple values of one type for lists
 
 IMPORTANT:
 - leading - MUST be part of number

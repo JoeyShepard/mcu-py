@@ -86,7 +86,7 @@
         FLAG_IN_FUNC=           8,      //Whether code is being compiled in a function or not
     };
 
-    //Flags for opening ( [ and {
+    //Flags for 16 bits of metadata for each opening ( [ and {
     enum OpeningFlags
     {
         FLAG_FUNC_DEREF=        0x8000, //Whether preceded by value which is then function or dereference 
@@ -95,17 +95,20 @@
     //Functions
     //=========
 
+    //TODO: arrange functions by group
     //Static functions - not used outside of execute.c
     static bool py_cstrcmp(const char *str1, uint16_t len1, const char *str2, uint16_t len2);
     static bool py_strchr(const char *str, char ch, size_t size);
     static uint8_t py_classify_input(const char input_char);
     static uint8_t py_lookup_op(char op);
     static uint8_t py_next_symbol(const char **text, uint16_t *len);
-    static int16_t py_find_symbol(const char *symbol_begin,uint8_t symbol_len);
+    static int16_t py_find_symbol(const char *symbol_begin, uint8_t symbol_len);
     static py_error_t py_token_push(uint8_t token);
     static py_error_t py_uint16_push(uint16_t data);
     static uint8_t py_token_pop();
     static uint16_t py_uint16_pop();
     static uint8_t py_find_precedence(uint8_t token);
+    //TODO: move to core.c?
+    static py_error_t py_append(uint8_t *obj, void *data, uint16_t data_size);
 
 #endif

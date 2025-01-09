@@ -288,6 +288,27 @@ static uint8_t py_find_precedence(uint8_t token)
     }
 }
 
+//TODO: if stays in execute.c, consider if data_dest should be py_heap_current
+static py_error_t py_append(uint8_t *obj, void *data, uint16_t size)
+{
+    //No need to add two bytes to size since end of list marker already exists
+    if (size>py_free)
+    {
+        return py_error_set(PY_ERROR_OUT_OF_MEM,0);
+    }
+    uint8_t *data_dest=py_heap_current;
+    for (uint16_t i=0;i<size;i++)
+    {
+        *data_dest=*(uint8_t *)data;
+        data++;
+        data_dest++;
+    }
+    *(uint16_t *)(obj)+=size;
+    py_heap_ptr+=size;
+    *(uint16_t*)(py_heap_current)=0;
+    return PY_ERROR_NONE;
+}
+
 //Execute Python source passed in as a string
 py_error_t py_execute(const char *text)
 {
@@ -598,6 +619,8 @@ py_error_t py_execute(const char *text)
                             num_ptr++;
                         }
 
+                        
+
                         //Debugging
                         {
                             debug("NUM: %d\n",num);
@@ -819,6 +842,7 @@ py_error_t py_execute(const char *text)
         //Advance source pointer by size of symbol
         text+=symbol_len;
 
+    //TODO: does END_ALL get processed?
     } while(symbol_queue[0].symbol!=SYMBOL_END_ALL);
 
     //int symbol_id=py_find_symbol(text);
