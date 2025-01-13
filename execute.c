@@ -102,15 +102,6 @@ static uint8_t py_next_symbol(const char **text, uint16_t *len)
         if ((symbol_state&1)==0) new_symbol_state&=PY_SYMBOL_MASK;
         else new_symbol_state>>=4;
 
-        //TODO: remove
-        /*
-        debug(">>>Input char: %c(%d). Length: %d. Type: %d - %s\n",input_char,input_char,*len,char_type,debug_value("symbol input type",char_type));
-        debug(">>>Old symbol state: %d - %s. New symbol state: %d - %s\n",symbol_state,debug_value("symbol type",symbol_state),new_symbol_state,debug_value("symbol type",new_symbol_state));
-        debug(">>>Look up: [%d][%d/2] = [%d][%d]\n",char_type,symbol_state,char_type,symbol_state/2);
-        debug_key();
-        */
-
-
         //Error if lookup table returns error state
         if (new_symbol_state==SYMBOL_ERROR) return SYMBOL_ERROR;
 
@@ -271,13 +262,11 @@ static bool py_custom_pop(uint8_t *data, uint8_t pop_class)
 
 static uint8_t *py_peek_stack(uint8_t *obj, uint8_t pop_class)
 {
-
     uint8_t *new_obj;
     if (obj==NULL)
     {
         //Haven't started searching yet so start at top of stack
         new_obj=py_tos;
-
     }
     else new_obj=obj;
 
@@ -400,94 +389,6 @@ py_error_t py_execute(const char *text)
     //Can't set error_num if uninitialized since stored in passed-in memory so return error code but don't set py_error_num
     if (!py_settings.initialized) return PY_ERROR_UNINITIALIZED;
 
-    //Debugging
-    {
-        /*
-        debug("Pre-heap: %u. Free: %u\n",PY_MEM_HEAP_BEGIN,py_free);
-        py_allocate(5);
-        debug("Pre-heap: %u. Free: %u\n",PY_MEM_HEAP_BEGIN,py_free);
-        py_allocate(7);
-        debug("Pre-heap: %u. Free: %u\n",PY_MEM_HEAP_BEGIN,py_free);
-        struct StackItem temp_stack_item;
-        py_push(temp_stack_item);
-        debug("Pre-heap: %u. Free: %u\n",PY_MEM_HEAP_BEGIN,py_free);
-        py_push_custom(0x42,3);
-        debug("Pre-heap: %u. Free: %u\n",PY_MEM_HEAP_BEGIN,py_free);
-
-        uint16_t temp=*(uint16_t*)py_heap_begin;
-        debug("Linked list sizes: %d ",temp);
-        temp=*(uint16_t*)(py_heap_begin+temp);
-        debug("%d ",temp);
-        temp=*(uint16_t*)(py_heap_begin+temp);
-        debug("%d ",temp);
-
-        debug_key();
-        */
-
-        debug("%s\n",text);
-    }
-
-    //Debugging
-    /*
-    {
-        uint8_t debug_buff[3];
-
-        debug("1.\n");
-        debug_stack();
-        debug("\n");
-
-        debug("2.\n");
-        debug_buff[0]=TOKEN_ADD;
-        py_custom_push(debug_buff,1);
-        debug_buff[0]=TOKEN_MUL;
-        py_custom_push(debug_buff,1);
-        debug_buff[0]=TOKEN_LPAREN;
-        *(uint16_t *)(debug_buff+1)=0x1234;
-        py_custom_push(debug_buff,3);
-        debug_buff[0]=TOKEN_EXP;
-        py_custom_push(debug_buff,1);
-        debug_buff[0]=TOKEN_SUB;
-        py_custom_push(debug_buff,1);
-        debug_buff[0]=TOKEN_MOD;
-        py_custom_push(debug_buff,1);
-        debug_stack();
-        debug("\n");
-
-        debug("3.\n");
-        uint8_t *ptr=NULL;
-        for (int i=0;i<3;i++)
-        {
-            ptr=py_peek_stack(ptr,POP_OPERATORS);
-            if (ptr==NULL)
-            {
-                debug("Done\n");
-                break;
-            }
-            else
-            {
-                debug("%s\n",debug_value("token",*ptr));
-            }
-        }
-        debug("\n");
-
-        debug("4.\n");
-        ptr=NULL;
-        for (int i=0;i<3;i++)
-        {
-            ptr=py_peek_stack(ptr,POP_OPERATORS);
-        }
-        debug("Found %s\n",debug_value("token",*ptr));
-        py_remove_stack(ptr);
-        debug_stack();
-        debug("\n");
-
-        return PY_ERROR_NONE;
-    }
-    */
-    //Debugging
-
-
-
     struct SymbolType
     {
         uint8_t symbol;
@@ -578,9 +479,6 @@ py_error_t py_execute(const char *text)
                 {
                     if (py_op_combos[i][1]==symbol_queue[0].token)
                     {
-
-                        //debug("Combo %d found! %s + %s = %s\n",i,debug_value("token",symbol_queue[0].token),debug_value("token",symbol_queue[1].token),debug_value("token",py_op_combos[i][2]));
-
                         //Combination found
                         symbol_queue[0].token=py_op_combos[i][2];
                         symbol_queue[1]=symbol_queue[2];
@@ -606,22 +504,6 @@ py_error_t py_execute(const char *text)
                 break;
         }
 
-        /*
-        //Debugging
-        {
-            debug("Queue: ");
-            for (int i=2;i>=0;i--)
-            {
-                debug("%s",debug_value("symbol type",symbol_queue[i].symbol));
-                if (symbol_queue[i].symbol==SYMBOL_OP) debug(" (%s)",debug_value("token",symbol_queue[i].token));
-                if (i==0) debug("\n");
-                else debug(", ");
-            }
-            debug("Flag value: %d\n",(exec_flags&FLAG_VALUE)==FLAG_VALUE);
-        }
-        //Debugging
-        */
-
         //Advance interpreter state
         uint8_t input_token, input_symbol;
         for (int index=2;index>=0;index--)
@@ -639,32 +521,6 @@ py_error_t py_execute(const char *text)
             }
             else exec_flags&=~FLAG_ADVANCE_STATE;
 
-            //Debugging
-            /*
-            {
-                if (exec_flags&FLAG_ADVANCE_STATE)
-                {
-                    debug("Stack(%d):",py_sp_count);
-                    uint8_t count=py_sp_count;
-                    uint8_t *ptr=py_tos;
-                    for (int j=0;j<count;j++)
-                    {
-                        debug("%s ",debug_value("token",*ptr));
-                        if (py_find_precedence(*ptr)==PREC_OPENING)
-                        {
-                            debug("(%X) ",*(uint16_t *)(ptr+1));
-                            count--; 
-                            ptr+=2;
-                        }
-                        ptr++;
-                    }
-                    debug("\n");
-                }
-            }
-            */
-            //Debugging
-
-
             //Look up new interpreter state in table
             if (exec_flags&FLAG_ADVANCE_STATE)
             {
@@ -679,9 +535,6 @@ py_error_t py_execute(const char *text)
                         //Fallthrough
                     case SYMBOL_OP:
                         //Look up next state from table 
-
-                        //debug("Starting state: %s, Token: %s, Result: ",debug_value("interpreter state",interpreter_state),debug_value("token",input_token));
-
                         table_ptr=py_state_table;
                         token_max=*table_ptr;
                         while(1)
@@ -707,9 +560,6 @@ py_error_t py_execute(const char *text)
                                     if (input_token==TOKEN_ADD) input_token=TOKEN_PLUS;
                                     if (input_token==TOKEN_SUB) input_token=TOKEN_NEG;
                                 }
-
-                                //debug("%s\n",debug_value("interpreter state",interpreter_state));
-
                                 break;
                             }
                             else
@@ -801,13 +651,6 @@ py_error_t py_execute(const char *text)
                             py_append(compile_target,&append_data,1);
                             py_append(compile_target,&num,4);
                         }
-
-                        //Debugging
-                        {
-                            //debug("NUM: %d\n",num);
-                        }
-                        //Debugging
-
                         break;
                     case SYMBOL_STRING:
                         //Compile value
@@ -816,29 +659,6 @@ py_error_t py_execute(const char *text)
                         append_data16=symbol_len-2;                     //-2 to length to discard quotes
                         py_append(compile_target,&append_data16,2);
                         py_append(compile_target,text+1,append_data16); //+1 to start after first quote
-                        break;
-                        
-                        //Debugging
-                        {
-                            /*
-                            debug("%s\n",text);
-                            debug("%s: ",debug_value("symbol type",input_symbol));
-                            for (int i=0;i<symbol_len;i++)
-                            {
-                                debug("%c",text[i]);
-                            }
-                            debug("\n");
-                            debug_key();
-
-                            for (int i=0;i<symbol_len;i++)
-                            {
-                                debug("%c",text[i]);
-                            }
-                            debug(" ");
-                            */
-                        }
-                        //Debugging
-
                         break;
                     case SYMBOL_OP:
                         //Shunting yard algorithm
@@ -860,10 +680,6 @@ py_error_t py_execute(const char *text)
                         {
                             //Closing parentheses or brackets: ) ] }
 
-                            //debug("\nClosing: %s\n",debug_value("token",input_token));
-
-                            //debug_stack();
-                            
                             //Empty pending operators until opening ( [ { found
                             while(1)
                             {
@@ -889,9 +705,6 @@ py_error_t py_execute(const char *text)
                                 }
                                 else 
                                 {
-                                    //debug("Searching and popped: %s\n ",debug_value("token",stack_token));
-                                    //debug("%s ",debug_value("token",stack_token));
-
                                     //Compile operator
                                     py_append(compile_target,stack_buffer,1);
                                 }
@@ -958,67 +771,11 @@ py_error_t py_execute(const char *text)
                             }
                             py_custom_push(&input_token,1);
                         }
-                        
-                        //Debugging
-                        {
-                            /*
-                            debug("%s\n",text);
-                            debug("token: %s\n",debug_value("token",input_token));
-                            debug_key();
-                            */
-
-                            //debug("%s (%d) ",debug_value("token",input_token),precedence);
-                        }
-                        //Debugging
-
                         break;
                 }   //switch for compiled values and operators processed by Shunting Yard
 
-
-
-                /*
-                //Debugging
-                {
-                    if ((input_symbol!=SYMBOL_SPACE)&&(input_symbol!=SYMBOL_NONE))
-                    {
-                        if (input_symbol==SYMBOL_OP)
-                        {
-                            debug("> Processed token: %s\n",debug_value("token",input_token));
-                        }
-                        else
-                        {
-                            debug("> Processed %s: ",debug_value("symbol type",input_symbol));
-                            for (int i=0;i<symbol_len;i++) debug("%c",text[i]);
-                            debug("\n");
-                        }
-                    }
-                }
-                //Debugging
-                */
             }   
         } //if - processed next interpreter state
-
-        //Debugging
-        /*
-        {
-            debug("\n%s\n",text);
-            debug("Type: %d - %s. Length: %d. Symbol: ",symbol_queue[0].symbol,debug_value("symbol type",symbol_queue[0].symbol),symbol_len);
-            for (int i=0;i<symbol_len;i++)
-            {
-                debug("%c",text[i]);
-            }
-            debug("\n");
-
-            if (symbol_queue[0].symbol==SYMBOL_OP)
-            {
-                debug(" - Token: %d",symbol_queue[0].token);
-                debug(" (%s)",debug_value("token",symbol_queue[0].token));
-                debug("\n");
-            }
-            debug_key();
-        }
-        */
-        //Debugging
 
         //Make room in queue for next symbol
         if (exec_flags&FLAG_VALUE)
