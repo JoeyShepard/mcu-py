@@ -3,7 +3,7 @@
      32	      0	      0	     32	     20	custom.o
    3500	   1120	  10032	  14652	   393c	debug.o
     140	      0	      0	    140	     8c	error.o
-   2564	      0	      0	   2564	    a04	execute.o
+   2814	      0	      0	   2814	    afe	execute.o
      32	      0	     16	     48	     30	globals.o
     646	     48	      0	    694	    2b6	tables.o
     435	      0	      0	    435	    1b3	test.o

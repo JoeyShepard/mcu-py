@@ -95,8 +95,8 @@
     //Compile stack is interleaved with different types so only pop data of the desired class
     enum PopClasses
     {
-        POP_CLOSING_FOUND,      //Closing bracket hit - pop all operators including ( { [
-        POP_END_LINE,           //End of line - flush all operators. Catch ( { [ as error.
+        POP_CLOSING_FOUND,      //Closing bracket hit - all operators including ( { [
+        POP_END_LINE,           //End of line - all operators including ( { [
         POP_OPERATORS,          //Shunting Yard - operators not including ( { [
 
         //TODO: remove
@@ -114,9 +114,9 @@
     static uint8_t py_lookup_op(char op);
     static uint8_t py_next_symbol(const char **text, uint16_t *len);
     static int16_t py_find_symbol(const char *symbol_begin, uint8_t symbol_len);
-    static py_error_t py_custom_push(const void *data, uint16_t data_size);
-    static bool py_custom_pop(void *data, uint8_t pop_class);
     static uint8_t py_token_size(uint8_t token);
+    static py_error_t py_custom_push(const void *data, uint16_t data_size);
+    static bool py_custom_pop(uint8_t *data, uint8_t pop_class);
     static uint8_t *py_peek_stack(uint8_t *obj, uint8_t pop_class);
     static uint8_t *py_remove_stack(uint8_t *obj);
     static uint8_t py_find_precedence(uint8_t token);

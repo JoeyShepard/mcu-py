@@ -219,6 +219,20 @@ static int16_t py_find_symbol(const char *symbol_begin,uint8_t symbol_len)
     return -1;
 }
 
+//Size on stack of any extra data after a token
+static uint8_t py_token_size(uint8_t token)
+{
+    switch (token)
+    {
+        case TOKEN_LPAREN:
+        case TOKEN_LSBRACKET:
+        case TOKEN_LCBRACKET:
+            return sizeof(uint16_t);
+        default:
+            return 0;
+    }
+}
+
 static py_error_t py_custom_push(const void *data, uint16_t data_size)
 {
     if (py_free<data_size) return py_error_set(PY_ERROR_OUT_OF_MEM,0);
@@ -233,23 +247,26 @@ static py_error_t py_custom_push(const void *data, uint16_t data_size)
     return PY_ERROR_NONE;
 }
 
-static bool py_custom_pop(void *data, uint8_t pop_class)
+static bool py_custom_pop(uint8_t *data, uint8_t pop_class)
 {
-     
-}
+    //Find next object on stack that matches desired class
+    uint8_t *obj=py_peek_stack(NULL,pop_class);
 
-//Size on stack of any extra data after a token
-static uint8_t py_token_size(uint8_t token)
-{
-    switch (token)
+    //No matching object found - return
+    if (obj==NULL) return false;
+
+    //Copy found object
+    uint8_t obj_size=py_token_size(data[0])+1;
+    for (int16_t i=0;i<obj_size;i++)
     {
-        case TOKEN_LPAREN:
-        case TOKEN_LSBRACKET:
-        case TOKEN_LCBRACKET:
-            return sizeof(uint16_t);
-        default:
-            return 0;
+        data[i]=obj[i];
     }
+
+    //Remove object from stack
+    py_remove_stack(obj);
+
+    //Matching object found - return true
+    return true;
 }
 
 static uint8_t *py_peek_stack(uint8_t *obj, uint8_t pop_class)
@@ -274,8 +291,27 @@ static uint8_t *py_peek_stack(uint8_t *obj, uint8_t pop_class)
         //Return address if token correct type
         switch (pop_class)
         {
-            //Operators for Shunting Yard - stop searching at ( { [ : ,
+            case POP_CLOSING_FOUND:
+                //Closing bracket hit - all operators including ( { [
+                //Fallthrough
+            case POP_END_LINE:
+                //End of line - all operators including ( { [
+                switch (*new_obj)
+                {
+                    case TOKEN_VAR_NAME:
+                        //Not looking for these - keep searching
+                        break;
+                    default:
+                        //All others are a match
+                        if (new_obj!=obj)
+                        {
+                            //Only return if different from starting object
+                            return new_obj;
+                        }
+                }
+                break;
             case POP_OPERATORS:
+                //Shunting Yard - operators not including ( { [
                 switch (*new_obj)
                 {
                     case TOKEN_VAR_NAME:
@@ -469,7 +505,6 @@ py_error_t py_execute(const char *text)
     uint8_t append_data;
     uint16_t append_data16;
     uint8_t token_max;
-    uint8_t stack_token;
     uint8_t stack_token_precedence;
     //TODO: explain size. should be big enough for biggest possible.
     //      3 - token and 16 bit metadata for ( [ {
@@ -703,16 +738,19 @@ py_error_t py_execute(const char *text)
                         //Compile pending operators
                         while(1)
                         {
-                            //TODO: replace with py_custom_pop
-                            //stack_token=py_token_pop();
-                            if (py_find_precedence(stack_token)==PREC_OPENING)
+                            if (py_custom_pop(stack_buffer, POP_END_LINE)==false)
+                            {
+                                //Reached end of stack - no more operators left to pop and compile
+                                break;
+                            }
+                            if (py_find_precedence(*stack_buffer)==PREC_OPENING)
                             {
                                 //If there is a ( [ or { at the end, error on missing } ] or )
                                 return py_error_set(PY_ERROR_SYNTAX,line_number);
                             }
 
                             //Compile operator
-                            py_append(compile_target,&stack_token,1);
+                            py_append(compile_target,stack_buffer,1);
                         }
                         if (input_symbol==SYMBOL_END_ALL)
                         {
@@ -824,12 +862,8 @@ py_error_t py_execute(const char *text)
 
                             //debug("\nClosing: %s\n",debug_value("token",input_token));
 
-                            debug_stack();
+                            //debug_stack();
                             
-                            START HERE
-                            - py_custom_pop then test it below
-                            - change to py_custom_pop on line 706
-
                             //Empty pending operators until opening ( [ { found
                             while(1)
                             {
@@ -905,9 +939,7 @@ py_error_t py_execute(const char *text)
                                         //Done - reached ( { [ : or end of stack
                                         break;
                                     }
-
-                                    stack_token=*obj_ptr;
-                                    stack_token_precedence=py_find_precedence(stack_token);
+                                    stack_token_precedence=py_find_precedence(*obj_ptr);
                                     if (((token_left_assoc==true)&&(stack_token_precedence<=input_token_precedence))||
                                             ((token_left_assoc==false)&&(stack_token_precedence<input_token_precedence)))
                                     {
