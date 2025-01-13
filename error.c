@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include "globals.h"
 
-uint8_t py_error_set(uint8_t error_num,uint16_t char_num)
+uint8_t py_error_set(uint8_t error_num, uint16_t line_number)
 {
     py_error_num=error_num;
 
@@ -14,7 +14,7 @@ uint8_t py_error_set(uint8_t error_num,uint16_t char_num)
     {
         if (py_error_func_ptr!=NULL)
         {
-            py_error_func(py_error_num,char_num);
+            py_error_func(py_error_num, line_number);
         }
     }
 

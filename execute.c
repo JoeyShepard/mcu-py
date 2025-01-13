@@ -219,55 +219,105 @@ static int16_t py_find_symbol(const char *symbol_begin,uint8_t symbol_len)
     return -1;
 }
 
-static py_error_t py_token_push(uint8_t token)
+static py_error_t py_custom_push(const void *data, uint16_t data_size)
 {
-    if (py_free==0) return py_error_set(PY_ERROR_OUT_OF_MEM,0);
+    if (py_free<data_size) return py_error_set(PY_ERROR_OUT_OF_MEM,0);
 
-    py_sp-=1;
-    *py_tos=token;
+    py_sp-=data_size;
+    for (uint16_t i=0;i<data_size;i++)
+    {
+        *(py_tos+i)=*(uint8_t *)(data+i);
+    }
     py_sp_count++;
 
     return PY_ERROR_NONE;
 }
 
-static py_error_t py_uint16_push(uint16_t data)
+static bool py_custom_pop(void *data, uint8_t pop_class)
 {
-    //TODO: handle in function like pop and return line number?
-    if (py_free<2) return py_error_set(PY_ERROR_OUT_OF_MEM,0);
-
-    py_sp-=2;
-    *(uint16_t *)py_tos=data;
-    py_sp_count++;
-
-    return PY_ERROR_NONE;
+     
 }
 
-static uint8_t py_token_pop()
+//Size on stack of any extra data after a token
+static uint8_t py_token_size(uint8_t token)
 {
-    if (py_sp_count==0) 
+    switch (token)
     {
-        py_error_set(PY_ERROR_STACK_UNDERFLOW,0);
-        return 0;
+        case TOKEN_LPAREN:
+        case TOKEN_LSBRACKET:
+        case TOKEN_LCBRACKET:
+            return sizeof(uint16_t);
+        default:
+            return 0;
     }
-
-    uint8_t token=*py_tos;
-    py_sp+=1;
-    py_sp_count--;
-    return token;
 }
 
-static uint16_t py_uint16_pop()
+static uint8_t *py_peek_stack(uint8_t *obj, uint8_t pop_class)
 {
-    if (py_sp_count==0) 
-    {
-        py_error_set(PY_ERROR_STACK_UNDERFLOW,0);
-        return 0;
-    }
 
-    uint16_t ret_val=*(uint16_t *)py_tos;
-    py_sp+=2;
+    uint8_t *new_obj;
+    if (obj==NULL)
+    {
+        //Haven't started searching yet so start at top of stack
+        new_obj=py_tos;
+
+    }
+    else new_obj=obj;
+
+    //Search through stack
+    while (1)
+    {
+        //Pointer reached end of stack - done searching
+        if (new_obj==py_settings.mem+py_mem_size) return NULL;
+
+        //TODO: use token ranges instead of switch? look up table?
+        //Return address if token correct type
+        switch (pop_class)
+        {
+            //Operators for Shunting Yard - stop searching at ( { [ : ,
+            case POP_OPERATORS:
+                switch (*new_obj)
+                {
+                    case TOKEN_VAR_NAME:
+                        //Not looking for these - keep searching
+                        break;
+                    case TOKEN_LPAREN:
+                    case TOKEN_LSBRACKET:
+                    case TOKEN_LCBRACKET:
+                    //TODO: do colon and comma actually end up on the stack?
+                    case TOKEN_COLON:
+                    case TOKEN_COMMA:
+                        //Done searching
+                        return NULL;
+                        break;
+                    default:
+                        //All others are a match
+                        if (new_obj!=obj)
+                        {
+                            //Only return if different from starting object
+                            return new_obj;
+                        }
+                }
+                break;
+            default:
+                return NULL;
+        }
+
+        //Advance pointer
+        new_obj+=py_token_size(*new_obj)+1;
+    }
+}
+
+static uint8_t *py_remove_stack(uint8_t *obj)
+{
+    uint16_t obj_size=py_token_size(*obj)+1;
+    for (uint8_t *copy_ptr=obj-1;copy_ptr>=py_tos;copy_ptr--)
+    {
+        *(copy_ptr+obj_size)=*copy_ptr; 
+    }
     py_sp_count--;
-    return ret_val;
+    py_sp+=obj_size;
+    return obj+obj_size;
 }
 
 static uint8_t py_find_precedence(uint8_t token)
@@ -288,8 +338,7 @@ static uint8_t py_find_precedence(uint8_t token)
     }
 }
 
-//TODO: if stays in execute.c, consider if data_dest should be py_heap_current
-static py_error_t py_append(uint8_t *obj, void *data, uint16_t size)
+static py_error_t py_append(uint8_t *obj, const void *data, uint16_t size)
 {
     //No need to add two bytes to size since end of list marker already exists
     if (size>py_free)
@@ -342,22 +391,89 @@ py_error_t py_execute(const char *text)
         debug("%s\n",text);
     }
 
+    //Debugging
+    /*
+    {
+        uint8_t debug_buff[3];
+
+        debug("1.\n");
+        debug_stack();
+        debug("\n");
+
+        debug("2.\n");
+        debug_buff[0]=TOKEN_ADD;
+        py_custom_push(debug_buff,1);
+        debug_buff[0]=TOKEN_MUL;
+        py_custom_push(debug_buff,1);
+        debug_buff[0]=TOKEN_LPAREN;
+        *(uint16_t *)(debug_buff+1)=0x1234;
+        py_custom_push(debug_buff,3);
+        debug_buff[0]=TOKEN_EXP;
+        py_custom_push(debug_buff,1);
+        debug_buff[0]=TOKEN_SUB;
+        py_custom_push(debug_buff,1);
+        debug_buff[0]=TOKEN_MOD;
+        py_custom_push(debug_buff,1);
+        debug_stack();
+        debug("\n");
+
+        debug("3.\n");
+        uint8_t *ptr=NULL;
+        for (int i=0;i<3;i++)
+        {
+            ptr=py_peek_stack(ptr,POP_OPERATORS);
+            if (ptr==NULL)
+            {
+                debug("Done\n");
+                break;
+            }
+            else
+            {
+                debug("%s\n",debug_value("token",*ptr));
+            }
+        }
+        debug("\n");
+
+        debug("4.\n");
+        ptr=NULL;
+        for (int i=0;i<3;i++)
+        {
+            ptr=py_peek_stack(ptr,POP_OPERATORS);
+        }
+        debug("Found %s\n",debug_value("token",*ptr));
+        py_remove_stack(ptr);
+        debug_stack();
+        debug("\n");
+
+        return PY_ERROR_NONE;
+    }
+    */
+    //Debugging
+
+
+
     struct SymbolType
     {
         uint8_t symbol;
         uint8_t token;
     } symbol_queue[3];
     
-    const char *text_original=text;
     uint16_t symbol_len;
     uint8_t interpreter_state;
     uint8_t last_interpreter_state;
     uint8_t exec_flags=FLAG_RESET_STATE;
-    //Used for state machine and precedence lookups
-    const uint8_t *table_ptr;
+    uint16_t line_number=0;
+    uint8_t *compile_target=NULL;
+    const uint8_t *table_ptr;       //Used for state machine and precedence lookups
+    //TODO: combine with buffer below?
+    uint8_t append_data;
+    uint16_t append_data16;
     uint8_t token_max;
     uint8_t stack_token;
     uint8_t stack_token_precedence;
+    //TODO: explain size. should be big enough for biggest possible.
+    //      3 - token and 16 bit metadata for ( [ {
+    uint8_t stack_buffer[3];
 
     do
     {
@@ -370,11 +486,19 @@ py_error_t py_execute(const char *text)
             interpreter_state=STATE_BEGIN;
             last_interpreter_state=STATE_NONE;
             exec_flags&=~FLAG_RESET_STATE;
+            line_number++;
+            if (compile_target==NULL)
+            {
+                //Allocate temp mem for code outside of function
+                compile_target=py_allocate(0);
+                append_data=OBJECT_TEMP;
+                py_append(compile_target,&append_data,1);
+            }
         }
 
         //Get next symbol in source
         symbol_queue[0].symbol=py_next_symbol(&text,&symbol_len);
-        if (symbol_queue[0].symbol==SYMBOL_ERROR) return py_error_set(PY_ERROR_INPUT,text_original-text);
+        if (symbol_queue[0].symbol==SYMBOL_ERROR) return py_error_set(PY_ERROR_INPUT,line_number);
 
         //Reclassify operator words to SYMBOL_OP: and, in, or, not
         if (symbol_queue[0].symbol==SYMBOL_ALPHA)
@@ -540,7 +664,7 @@ py_error_t py_execute(const char *text)
                                 else interpreter_state=default_val;
                                 
                                 //Handle syntax errors
-                                if (interpreter_state==STATE_ERROR) return py_error_set(PY_ERROR_INPUT,text_original-text);
+                                if (interpreter_state==STATE_ERROR) return py_error_set(PY_ERROR_INPUT,line_number);
 
                                 //Account for unary + and -
                                 if (interpreter_state==STATE_INV_NEG_PLUS)
@@ -562,9 +686,9 @@ py_error_t py_execute(const char *text)
                         }
                         break;
                 }
-               
-                //Symbol ready to be compiled
-                int num=0;
+              
+                //Values ready to be compiled, operators ready to be processed by Shunting Yard
+                int32_t num=0;
                 const char *num_ptr=text;
                 switch (input_symbol)
                 {
@@ -574,21 +698,27 @@ py_error_t py_execute(const char *text)
                         //Fallthrough
                     case SYMBOL_END_ALL:
                         //Make sure expression didn't end with calculation pending like 2+
-                        if (interpreter_state==STATE_REQ) return py_error_set(PY_ERROR_SYNTAX,text_original-text);
-
-                        uint8_t count=py_sp_count;
-                        for (int j=0;j<count;j++)
+                        if (interpreter_state==STATE_REQ) return py_error_set(PY_ERROR_SYNTAX,line_number);
+                       
+                        //Compile pending operators
+                        while(1)
                         {
-                            stack_token=py_token_pop();
-
-                            //Debugging
-                            debug("%s ",debug_value("token",stack_token));
-                            
+                            //TODO: replace with py_custom_pop
+                            //stack_token=py_token_pop();
                             if (py_find_precedence(stack_token)==PREC_OPENING)
                             {
                                 //If there is a ( [ or { at the end, error on missing } ] or )
-                                return py_error_set(PY_ERROR_SYNTAX,text_original-text);
+                                return py_error_set(PY_ERROR_SYNTAX,line_number);
                             }
+
+                            //Compile operator
+                            py_append(compile_target,&stack_token,1);
+                        }
+                        if (input_symbol==SYMBOL_END_ALL)
+                        {
+                            append_data=TOKEN_RETURN;
+                            py_append(compile_target,&append_data,1);
+                            exec_flags|=FLAG_DONE;
                         }
                         break;
                     case SYMBOL_ALPHA:
@@ -603,35 +733,52 @@ py_error_t py_execute(const char *text)
                             else if ((*num_ptr>='A')&&(*num_ptr<='Z')) num+=(*num_ptr)-'A'+10;
                             num_ptr++;
                         }
-
-                        //Debugging
-                        {
-                            debug("HEX: 0x%X\n",num);
-                        }
-                        //Debugging
-
-                        break;
+                        //Fallthrough
                     case SYMBOL_NUM:
-                        for (int i=0;i<symbol_len;i++)
+                        if (input_symbol==SYMBOL_NUM)
                         {
-                            num*=10;
-                            num+=(*num_ptr)-'0';
-                            num_ptr++;
+                            for (int i=0;i<symbol_len;i++)
+                            {
+                                num*=10;
+                                num+=(*num_ptr)-'0';
+                                num_ptr++;
+                            }
                         }
-
                         
+                        if ((num>=INT8_MIN)&&(num<=INT8_MAX))
+                        {
+                            append_data=TOKEN_INT8;
+                            py_append(compile_target,&append_data,1);
+                            py_append(compile_target,&num,1);
+                        }
+                        else if ((num>=INT16_MIN)&&(num<=INT16_MAX))
+                        {
+                            append_data=TOKEN_INT16;
+                            py_append(compile_target,&append_data,1);
+                            py_append(compile_target,&num,2);
+                        }
+                        else 
+                        {
+                            append_data=TOKEN_INT32;
+                            py_append(compile_target,&append_data,1);
+                            py_append(compile_target,&num,4);
+                        }
 
                         //Debugging
                         {
-                            debug("NUM: %d\n",num);
+                            //debug("NUM: %d\n",num);
                         }
                         //Debugging
 
                         break;
                     case SYMBOL_STRING:
+                        //Compile value
+                        append_data=TOKEN_STRING;
+                        py_append(compile_target,&append_data,1);
+                        append_data16=symbol_len-2;                     //-2 to length to discard quotes
+                        py_append(compile_target,&append_data16,2);
+                        py_append(compile_target,text+1,append_data16); //+1 to start after first quote
                         break;
-                        
-                        
                         
                         //Debugging
                         {
@@ -644,19 +791,15 @@ py_error_t py_execute(const char *text)
                             }
                             debug("\n");
                             debug_key();
-                            */
 
                             for (int i=0;i<symbol_len;i++)
                             {
                                 debug("%c",text[i]);
                             }
                             debug(" ");
+                            */
                         }
                         //Debugging
-
-                        //Compile value
-
-
 
                         break;
                     case SYMBOL_OP:
@@ -670,9 +813,10 @@ py_error_t py_execute(const char *text)
                             //Opening parentheses or brackets: ( [ {
 
                             //Push token and 16 bit value for metadata
-                            if (last_interpreter_state==STATE_VAL) py_uint16_push(FLAG_FUNC_DEREF);
-                            else py_uint16_push(0);
-                            py_token_push(input_token);
+                            stack_buffer[0]=input_token;
+                            if (last_interpreter_state==STATE_VAL) *(uint16_t *)(stack_buffer+1)=FLAG_FUNC_DEREF;
+                            else *(uint16_t *)(stack_buffer+1)=0;
+                            py_custom_push(stack_buffer,3);
                         }
                         else if (input_token_precedence==PREC_CLOSING)
                         {
@@ -680,28 +824,42 @@ py_error_t py_execute(const char *text)
 
                             //debug("\nClosing: %s\n",debug_value("token",input_token));
 
-                            uint8_t count=py_sp_count;
-                            for (int j=0;j<count;j++)
+                            debug_stack();
+                            
+                            START HERE
+                            - py_custom_pop then test it below
+                            - change to py_custom_pop on line 706
+
+                            //Empty pending operators until opening ( [ { found
+                            while(1)
                             {
-                                stack_token=py_token_pop();
-                                stack_token_precedence=py_find_precedence(stack_token);
+                                if (py_custom_pop(stack_buffer,POP_CLOSING_FOUND)==false)
+                                {
+                                    //No matching bracket found! ie 1+2)
+                                    return py_error_set(PY_ERROR_SYNTAX,line_number);
+                                }
+                                stack_token_precedence=py_find_precedence(stack_buffer[0]);
                                 if (stack_token_precedence==PREC_OPENING)
                                 {
                                     //Ensure ( matches ), [ matches ], { matches }
-                                    if (input_token!=stack_token+3) return py_error_set(PY_ERROR_SYNTAX,text_original-text);
+                                    if (input_token!=stack_buffer[0]+3)
+                                    {
+                                        return py_error_set(PY_ERROR_SYNTAX,line_number);
+                                    }
                                     else
                                     {
-                                        //Found match - process meta data
-                                        uint16_t stack_meta_data=py_uint16_pop();
-                                        count--;
+                                        //Found match - process meta data in stack_buffer[1:]
+                                        //TODO
                                         break;
                                     }
                                 }
                                 else 
                                 {
-                                    //Compile operator
                                     //debug("Searching and popped: %s\n ",debug_value("token",stack_token));
-                                    debug("%s ",debug_value("token",stack_token));
+                                    //debug("%s ",debug_value("token",stack_token));
+
+                                    //Compile operator
+                                    py_append(compile_target,stack_buffer,1);
                                 }
                             }
                         }
@@ -738,34 +896,35 @@ py_error_t py_execute(const char *text)
                                 }
                                
                                 //Pop operators from stack
-                                uint8_t count=py_sp_count;
-                                for (int j=0;j<count;j++)
+                                uint8_t *obj_ptr=NULL;
+                                while(1)
                                 {
-                                    stack_token=*py_tos;
-                                    stack_token_precedence=py_find_precedence(stack_token);
-                                    
-                                    if (stack_token_precedence==PREC_OPENING)
+                                    obj_ptr=py_peek_stack(obj_ptr,POP_OPERATORS);
+                                    if (obj_ptr==NULL)
                                     {
-                                        //Done looping since hit ( [ or {
+                                        //Done - reached ( { [ : or end of stack
                                         break;
                                     }
-                                    else if (((token_left_assoc==true)&&(stack_token_precedence<=input_token_precedence))||
+
+                                    stack_token=*obj_ptr;
+                                    stack_token_precedence=py_find_precedence(stack_token);
+                                    if (((token_left_assoc==true)&&(stack_token_precedence<=input_token_precedence))||
                                             ((token_left_assoc==false)&&(stack_token_precedence<input_token_precedence)))
                                     {
-                                        //stack_token already recorded above before pop
-                                        py_token_pop(); 
-                                        //debug("Lower: %s\n",debug_value("token",stack_token));
-                                        debug("%s ",debug_value("token",stack_token));
+                                        //Compile token
+                                        py_append(compile_target,obj_ptr,1);
+                                        
+                                        //Remove token from stack
+                                        obj_ptr=py_remove_stack(obj_ptr);
                                     }
                                     else 
                                     {
-                                        //Done looping
+                                        //Done - reached operator of higher precedence
                                         break;
                                     }
                                 }
                             }
-                            py_token_push(input_token);
-                           
+                            py_custom_push(&input_token,1);
                         }
                         
                         //Debugging
@@ -781,7 +940,7 @@ py_error_t py_execute(const char *text)
                         //Debugging
 
                         break;
-                }
+                }   //switch for compiled values and operators processed by Shunting Yard
 
 
 
@@ -804,8 +963,8 @@ py_error_t py_execute(const char *text)
                 }
                 //Debugging
                 */
-            }
-        }
+            }   
+        } //if - processed next interpreter state
 
         //Debugging
         /*
@@ -842,12 +1001,13 @@ py_error_t py_execute(const char *text)
         //Advance source pointer by size of symbol
         text+=symbol_len;
 
-    //TODO: does END_ALL get processed?
-    } while(symbol_queue[0].symbol!=SYMBOL_END_ALL);
+    } while(!(exec_flags&FLAG_DONE));
 
-    //int symbol_id=py_find_symbol(text);
-
-    //if (symbol_id==-1) return py_error_set(PY_ERROR_UNDEFINED);
+    //Run compiled code if anything compiled outside of a function
+    if (compile_target!=NULL)
+    {
+        py_run(compile_target);
+    }
 
     return PY_ERROR_NONE;
 }

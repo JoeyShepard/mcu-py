@@ -1,9 +1,9 @@
    text	   data	    bss	    dec	    hex	filename
-    343	      0	      0	    343	    157	core.o
+    827	      0	      0	    827	    33b	core.o
      32	      0	      0	     32	     20	custom.o
-   2839	    912	  10032	  13783	   35d7	debug.o
+   3500	   1120	  10032	  14652	   393c	debug.o
     140	      0	      0	    140	     8c	error.o
-   2479	      0	      0	   2479	    9af	execute.o
+   2564	      0	      0	   2564	    a04	execute.o
      32	      0	     16	     48	     30	globals.o
     646	     48	      0	    694	    2b6	tables.o
-    442	      0	      0	    442	    1ba	test.o
+    435	      0	      0	    435	    1b3	test.o

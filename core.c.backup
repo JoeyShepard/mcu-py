@@ -63,152 +63,138 @@ uint8_t *py_allocate(uint16_t size)
 //- uint8_t: enum ObjectTypes - should be OBJECT_TEMP
 py_error_t py_run(uint8_t *bytecode)
 {
-    //Debugging
-    /*
+    for (int i=0;i<10;i++)
     {
-        for (int i=0;i<20;i++)
-        {
-            debug("%d\n",*(bytecode+i));
-        }
-        debug_key();
-    }*/
+        debug("%d\n",*(bytecode+i));
+    }
+
 
     //Distance to next object
-    uint16_t obj_size=*(uint16_t *)bytecode-sizeof(uint16_t);
+    uint16_t size=*(uint16_t *)bytecode-sizeof(uint16_t);
     bytecode+=sizeof(uint16_t);
 
     //Debugging
     {
-        debug("RUN: size:%u\n",obj_size);
+        debug("RUN: size:%u\n",size);
         debug("%s\n",debug_value("object type",*bytecode));
     }
     //Debugging
     
-    //Skip over object type
+    //Object type - should be OBJECT_TEMP
     bytecode+=sizeof(uint8_t);
-
-    //Loop through bytecode
     uint8_t op;
     do 
     {
-        op=*bytecode;
+        uint8_t op=*bytecode;
         bytecode++;
 
         //Debugging
-        debug("%d - %s (",op,debug_value("token",op));
+        debug("%d - %s ",op,debug_value("token",op));
         //Debugging
 
+        /*
         switch (op)
         {
-            case TOKEN_EQ:
+            TOKEN_EQ:
                 break;
-            case TOKEN_EXP_EQ:
+            TOKEN_EXP_EQ:
                 break;
-            case TOKEN_MUL_EQ:
+            TOKEN_MUL_EQ:
                 break;
-            case TOKEN_DIV_EQ:
+            TOKEN_DIV_EQ:
                 break;
-            case TOKEN_MOD_EQ:
+            TOKEN_MOD_EQ:
                 break;
-            case TOKEN_ADD_EQ:
+            TOKEN_ADD_EQ:
                 break;
-            case TOKEN_SUB_EQ:
+            TOKEN_SUB_EQ:
                 break;
-            case TOKEN_LSHIFT_EQ:
+            TOKEN_LSHIFT_EQ:
                 break;
-            case TOKEN_RSHIFT_EQ:
+            TOKEN_RSHIFT_EQ:
                 break;
-            case TOKEN_AND_EQ:
+            TOKEN_AND_EQ:
                 break;
-            case TOKEN_XOR_EQ:
+            TOKEN_XOR_EQ:
                 break;
-            case TOKEN_OR_EQ:
+            TOKEN_OR_EQ:
                 break;
-            case TOKEN_EXP:
+            TOKEN_EXP:
                 break;
-            case TOKEN_INVERT:
+            TOKEN_INVERT:
                 break;
-            case TOKEN_NEG:
+            TOKEN_NEG:
                 break;
-            case TOKEN_PLUS:
+            TOKEN_PLUS:
                 break;
-            case TOKEN_MUL:
+            TOKEN_MUL:
                 break;
-            case TOKEN_DIV:
+            TOKEN_DIV:
                 break;
-            case TOKEN_MOD:
+            TOKEN_MOD:
                 break;
-            case TOKEN_ADD:
+            TOKEN_ADD:
                 break;
-            case TOKEN_SUB:
+            TOKEN_SUB:
                 break;
-            case TOKEN_LSHIFT:
+            TOKEN_LSHIFT:
                 break;
-            case TOKEN_RSHIFT:
+            TOKEN_RSHIFT:
                 break;
-            case TOKEN_AND:
+            TOKEN_AND:
                 break;
-            case TOKEN_XOR:
+            TOKEN_XOR:
                 break;
-            case TOKEN_OR:
+            TOKEN_OR:
                 break;
-            case TOKEN_IN:
+            TOKEN_IN:
                 break;
-            case TOKEN_NOT_IN:
+            TOKEN_NOT_IN:
                 break;
-            case TOKEN_LT:
+            TOKEN_LT:
                 break;
-            case TOKEN_LE:
+            TOKEN_LE:
                 break;
-            case TOKEN_GT:
+            TOKEN_GT:
                 break;
-            case TOKEN_GE:
+            TOKEN_GE:
                 break;
-            case TOKEN_NE:
+            TOKEN_NE:
                 break;
-            case TOKEN_EQ_EQ:
+            TOKEN_EQ_EQ:
                 break;
-            case TOKEN_EXCLAM:
+            TOKEN_EXCLAM:
                 break;
-            case TOKEN_BOOL_NOT:
+            TOKEN_BOOL_NOT:
                 break;
-            case TOKEN_BOOL_AND:
+            TOKEN_BOOL_AND:
                 break;
-            case TOKEN_BOOL_OR:
+            TOKEN_BOOL_OR:
                 break;
             //Tokens below here are bytecode - saves space to reuse token range
-            case TOKEN_INT8:
-                debug("%d",*bytecode);
-                bytecode++;
+            TOKEN_INT8:
                 break;
-            case TOKEN_INT16:
-                debug("%d",*(uint16_t *)bytecode);
-                bytecode+=2;
+            TOKEN_INT16:
                 break;
-            case TOKEN_INT32:
-                debug("%d",*(uint32_t *)bytecode);
-                bytecode+=4;
+            TOKEN_INT32:
                 break;
-            case TOKEN_STRING:
-                debug("<<");
-                uint16_t str_size=*(uint16_t *)bytecode;
-                bytecode+=2;
-                for (uint16_t i=0;i<str_size;i++)
-                {
-                    debug("%c",*bytecode);
-                    bytecode++;
-                }
-                debug(">>");
+            TOKEN_STRING:
                 break;
-            case TOKEN_MAKE_LIST:
+            TOKEN_MAKE_LIST:
                 break;
-            case TOKEN_RETURN:
+            TOKEN_RETURN:
                 break;
         } //switch(op)
+        */
 
-        debug(")\n");
+        //Debugging
+        debug(" (%d = %d? %d)\n",op,TOKEN_RETURN,op==TOKEN_RETURN);
+        debug_key();
+        //Debugging
 
     } while (op!=TOKEN_RETURN);
+
+    debug("Returning...");
 
     return PY_ERROR_NONE;
 }

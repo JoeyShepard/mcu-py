@@ -15,5 +15,6 @@
     int debug_log_hex(uint32_t num);
     int debug_print_log();
     int debug_reset_log();
+    int debug_stack();
 
 #endif

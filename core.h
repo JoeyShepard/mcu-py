@@ -69,6 +69,7 @@
     //=======
     enum ObjectTypes
     {
+        OBJECT_TEMP,        //Temp space for code executed outside of function
         OBJECT_INT,
         OBJECT_STRING,
         OBJECT_VAR,    
@@ -79,15 +80,15 @@
         OBJECT_TUPLE,
         OBJECT_ITER,        //Iterator - range, list, etc for for loop
         OBJECT_BOOL,
-        OBJECT_NONE,
+        OBJECT_NONE,        //Python None
         OBJECT_FREE,        //Free to garbage collect
         OBJECT_FLOAT,       //Not supported yet but go ahead and reserve ID
         OBJECT_SET          //Not supported yet but go ahead and reserve ID
     };
 
 
-    //Execution tokens
-    //======
+    //Parsing and execution tokens
+    //============================
     enum TokenTypes
     {
         //Used in source parser in execute.c
@@ -142,7 +143,19 @@
         TOKEN_BOOL_NOT,
         TOKEN_BOOL_AND,
         TOKEN_BOOL_OR,
+        //Tokens starting here are bytecode - saves space to reuse same token range
+        TOKEN_INT8,
+        TOKEN_INT16,
+        TOKEN_INT32,
+        TOKEN_STRING,
+        TOKEN_MAKE_LIST,
+        TOKEN_RETURN,
+        //Tokens starting here are for storing things like variable names on stack during compilation
+        TOKEN_VAR_NAME,
 
     };
+
+    //Execution
+    py_error_t py_run(uint8_t *bytecode);
 
 #endif

@@ -81,15 +81,26 @@
     enum ExecuteFlags
     {
         FLAG_RESET_STATE=       1,      //Reset state at beginning of each line of source
-        FLAG_ADVANCE_STATE=     2,      //Move syntax state machine to next state
-        FLAG_VALUE=             4,      //Whether symbol being processed is alpha/num/hex/str or not
-        FLAG_IN_FUNC=           8,      //Whether code is being compiled in a function or not
+        FLAG_ADVANCE_STATE=     2,      //Move syntax state machine to next state?
+        FLAG_VALUE=             4,      //Symbol being processed is alpha/num/hex/str?
+        FLAG_DONE=              8,      //Done processing source?
     };
 
     //Flags for 16 bits of metadata for each opening ( [ and {
     enum OpeningFlags
     {
         FLAG_FUNC_DEREF=        0x8000, //Whether preceded by value which is then function or dereference 
+    };
+
+    //Compile stack is interleaved with different types so only pop data of the desired class
+    enum PopClasses
+    {
+        POP_CLOSING_FOUND,      //Closing bracket hit - pop all operators including ( { [
+        POP_END_LINE,           //End of line - flush all operators. Catch ( { [ as error.
+        POP_OPERATORS,          //Shunting Yard - operators not including ( { [
+
+        //TODO: remove
+        POP_DEBUG
     };
 
     //Functions
@@ -103,12 +114,13 @@
     static uint8_t py_lookup_op(char op);
     static uint8_t py_next_symbol(const char **text, uint16_t *len);
     static int16_t py_find_symbol(const char *symbol_begin, uint8_t symbol_len);
-    static py_error_t py_token_push(uint8_t token);
-    static py_error_t py_uint16_push(uint16_t data);
-    static uint8_t py_token_pop();
-    static uint16_t py_uint16_pop();
+    static py_error_t py_custom_push(const void *data, uint16_t data_size);
+    static bool py_custom_pop(void *data, uint8_t pop_class);
+    static uint8_t py_token_size(uint8_t token);
+    static uint8_t *py_peek_stack(uint8_t *obj, uint8_t pop_class);
+    static uint8_t *py_remove_stack(uint8_t *obj);
     static uint8_t py_find_precedence(uint8_t token);
     //TODO: move to core.c?
-    static py_error_t py_append(uint8_t *obj, void *data, uint16_t data_size);
+    static py_error_t py_append(uint8_t *obj, const void *data, uint16_t data_size);
 
 #endif

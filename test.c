@@ -27,8 +27,7 @@
 - double check ; works as expected
 - check memory passed in meets minimum
 - {5,2,2} is set {2,5} not dict
-- 6.10 - chainging ie a < b < c
-- remove py_push_custom
+- 6.10 - chaining ie a < b < c
 - add keywords
   - list
   - try/except?
@@ -38,13 +37,25 @@
   - bit in pointer shows if int
     - (x<<1)>>1 extends sign!
     - actually, dont do this. dont want to detect overflow on all calculations
+  - actually, changed my mind again:
+    - garbage collection for random ints would suck and waste memory
+    - otoh, only need 16 bits for pointer. hmm, not sure...
+      - wasting 2 bytes on stack may still be better than gc
+    - compromise - 4 bit type so 5 bytes for int or for 2 pointers
+      - this could work but slow
+    - could use all 4 bytes for pointer but how does that work on x86?
+      - #ifdef in engine? could work if defined in custom.h
+    - SOLVED: greater of sizeof(int32) and sizeof(pointer)
+      - wastes space on x86 but who cares
+      - right size on SH4
+      - wastes 2 bytes on MSP430
 - x="a""b" works in python
 - allocate and all other functions that can set error have error checking on return?
 - track lines for errors instead of characters since characters not very accurate
 - if space, bytecode for multiple values of one type for lists
-
-IMPORTANT:
-- leading - MUST be part of number
+- move source line num for errors to global obj so functions dont need to pass line num in case callee errors 
+- double check optimizer on msp430 resolves py_sp etc defines. if not, buffer value before loop.
+  - ie py_peek_stack
 
 IMPORTANT:
 - keeping a list is not great but need it for globals
@@ -54,9 +65,9 @@ IMPORTANT:
     - if no more refs, delete from list and garbage collect
 */
 
-void test_error_handler(uint8_t e, uint16_t char_num)
+void test_error_handler(uint8_t e, uint16_t line_number)
 {
-    printf("Test error handler - error %d near character %d\n",e,char_num);
+    printf("Test error handler - error %d on line %u\n",e,line_number);
 
     return;
 }
@@ -66,7 +77,6 @@ void test_error_handler(uint8_t e, uint16_t char_num)
 void scratch()
 {
 }
-
 
 int main(int argc, char *argv[])
 {

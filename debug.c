@@ -5,7 +5,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include "core.h"
 #include "debug.h"
+#include "globals.h"
 
 //structs
 struct DebugLookup
@@ -73,6 +75,27 @@ static const char *debug_symbol_input_type[]=
     ""
 };
 
+static const char *debug_object_type[]=
+{
+    "OBJECT_TEMP",
+    "OBJECT_INT",
+    "OBJECT_STRING",
+    "OBJECT_VAR",    
+    "OBJECT_FUNC",   
+    "OBJECT_BUILTIN",
+    "OBJECT_LIST",
+    "OBJECT_DICT",
+    "OBJECT_TUPLE",
+    "OBJECT_ITER",   
+    "OBJECT_BOOL",
+    "OBJECT_NONE",   
+    "OBJECT_FREE",   
+    "OBJECT_FLOAT",  
+    "OBJECT_SET",     
+    //Don't remove! Marks last entry
+    ""
+};
+
 static const char *debug_token[]=
 {
     "TOKEN_NONE",
@@ -122,7 +145,18 @@ static const char *debug_token[]=
     "TOKEN_EXCLAM",
     "TOKEN_BOOL_NOT",
     "TOKEN_BOOL_AND",
-    "TOKEN_BOOL_OR"
+    "TOKEN_BOOL_OR",
+    //Tokens below here are bytecode - saves space to reuse token range
+    "TOKEN_INT8",
+    "TOKEN_INT16",
+    "TOKEN_INT32",
+    "TOKEN_STRING",
+    "TOKEN_MAKE_LIST",
+    "TOKEN_RETURN",
+    //Tokens starting here are for storing things like variable names on stack during compilation
+    "TOKEN_VAR_NAME",
+
+
     //Don't remove! Marks last entry
     ""
 };
@@ -148,6 +182,7 @@ static struct DebugLookup debug_lookup[]=
     {"interpreter state",   debug_interpreter_state},
     {"symbol type",         debug_symbol_type},
     {"symbol input type",   debug_symbol_input_type},
+    {"object type",         debug_object_type},
     {"token",               debug_token},
     {"error",               debug_error},
     //Don't remove! Marks end of list.
@@ -306,4 +341,39 @@ int debug_reset_log()
     return 0;
 }
 
+int debug_stack()
+{
+    debug("Stack: %d bytes\n",py_mem_size-py_sp);
+    if (py_sp_count>0)
+    {
+        uint16_t count=py_sp_count;
+        uint8_t *ptr=py_tos;
+        while(count>0)
+        {
+            uint8_t offset=0;
+            debug(" %.2d: %.2X",py_sp_count-count,*ptr);
+            switch (*ptr)
+            {
+                case TOKEN_LPAREN:
+                case TOKEN_LSBRACKET:
+                case TOKEN_LCBRACKET:
+                    offset=2;
+                    break;
+            }
+            for (int i=0;i<offset;i++)
+            {
+                debug(" %.2X",*(ptr+i+1));
+            }
 
+            uint8_t padding=16;
+            for (int i=0;i<padding-7-offset*3;i++) debug(" ");
+            debug(" %s\n",debug_value("token",*ptr));
+            
+            ptr+=offset+1;
+            count--;
+        }
+    }
+   
+
+    return 0;
+}

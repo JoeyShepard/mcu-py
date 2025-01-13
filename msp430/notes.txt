@@ -1,0 +1,3 @@
+tried compiling for msp430 to see sizes but choked on uint8_t etc
+looked at headers installed with msp430-gcc and there is stdint.h there
+wait until project done and remove calls to debug then try again
