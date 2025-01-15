@@ -56,6 +56,8 @@
 - move source line num for errors to global obj so functions dont need to pass line num in case callee errors 
 - double check optimizer on msp430 resolves py_sp etc defines. if not, buffer value before loop.
   - ie py_peek_stack
+- exception to state LUT - need more syntax checks now?
+  - already checking for 2+3) so what else?
 
 
 IMPORTANT:

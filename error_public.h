@@ -12,6 +12,9 @@
         PY_ERROR_SYNTAX,            //Syntax error in source
         PY_ERROR_INTERNAL,          //Should never happen - problem is not from user's source 
         PY_ERROR_STACK_UNDERFLOW,   
+        PY_ERROR_ELEMENT_OVERFLOW,  //More elements in list/dict/tuple in source than meta-data can hold
+        PY_ERROR_MISSING_ARG,       //Missing func arg since default args not allowed ie f(x,)
+        PY_ERROR_TOO_MANY_ARGS      //Functions limited to 255 args
     };
 
 #endif

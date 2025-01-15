@@ -153,6 +153,7 @@ static const char *debug_token[]=
     "TOKEN_STRING",
     "TOKEN_MAKE_LIST",
     "TOKEN_RETURN",
+    "TOKEN_FUNC",
     //Tokens starting here are for storing things like variable names on stack during compilation
     "TOKEN_VAR_NAME",
 
@@ -172,6 +173,10 @@ static const char *debug_error[]=
     "PY_ERROR_SYNTAX",
     "PY_ERROR_INTERNAL",
     "PY_ERROR_STACK_UNDERFLOW",
+    "PY_ERROR_ELEMENT_OVERFLOW",
+    "PY_ERROR_MISSING_ARG",
+    "PY_ERROR_TOO_MANY_ARGS",
+
     //Don't remove! Marks last entry
     ""
 };

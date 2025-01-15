@@ -150,6 +150,7 @@
         TOKEN_STRING,
         TOKEN_MAKE_LIST,
         TOKEN_RETURN,
+        TOKEN_FUNC,
         //Tokens starting here are for storing things like variable names on stack during compilation
         TOKEN_VAR_NAME,
 

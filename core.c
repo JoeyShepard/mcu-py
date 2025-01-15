@@ -204,6 +204,10 @@ py_error_t py_run(uint8_t *bytecode)
                 break;
             case TOKEN_RETURN:
                 break;
+            case TOKEN_FUNC:
+                debug("%d",*bytecode);
+                bytecode++;
+                break;
         } //switch(op)
 
         debug(")\n");

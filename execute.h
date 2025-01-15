@@ -11,6 +11,7 @@
     #define PY_CHAR_LAST_VALID  126         //Characters in source after this are invalid
     #define PY_CHAR_MASK        0xF         //Lower 4 bits of entry in py_state_chars is size of range
     #define PY_SYMBOL_MASK      0xF         //Lookup in py_state_symbols stored 4 bits each
+    #define PY_FUNC_MAX_ARGS    255         //Limit so arg count fits in one byte
    
     //Interpreter states
     #define STATE_ENTRY_SIZE    3           //Size in bytes of entry in py_state_table in tables.c
@@ -84,12 +85,14 @@
         FLAG_ADVANCE_STATE=     2,      //Move syntax state machine to next state?
         FLAG_VALUE=             4,      //Symbol being processed is alpha/num/hex/str?
         FLAG_DONE=              8,      //Done processing source?
+        FLAG_COMMA_LAST=        0x10,   //Last symbol compiled was a comma?
     };
 
     //Flags for 16 bits of metadata for each opening ( [ and {
     enum OpeningFlags
     {
         FLAG_FUNC_DEREF=        0x8000, //Whether preceded by value which is then function or dereference 
+        FLAG_COUNT_MASK=        0x7FFF, //Lower 14 bits hold number of elements
     };
 
     //Compile stack is interleaved with different types so only pop data of the desired class
@@ -98,9 +101,7 @@
         POP_CLOSING_FOUND,      //Closing bracket hit - all operators including ( { [
         POP_END_LINE,           //End of line - all operators including ( { [
         POP_OPERATORS,          //Shunting Yard - operators not including ( { [
-
-        //TODO: remove
-        POP_DEBUG
+        POP_OPENINGS,           //Find opening brackets - ( { [
     };
 
     //Functions
