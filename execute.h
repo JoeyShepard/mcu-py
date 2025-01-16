@@ -85,14 +85,29 @@
         FLAG_ADVANCE_STATE=     2,      //Move syntax state machine to next state?
         FLAG_VALUE=             4,      //Symbol being processed is alpha/num/hex/str?
         FLAG_DONE=              8,      //Done processing source?
-        FLAG_COMMA_LAST=        0x10,   //Last symbol compiled was a comma?
+        FLAG_COMMA_LAST=        0x10,   //Last symbol processed was a comma?
+        FLAG_COLON_LAST=        0x20    //Last symbol processed was a colon?
     };
 
     //Flags for 16 bits of metadata for each opening ( [ and {
     enum OpeningFlags
     {
-        FLAG_FUNC_DEREF=        0x8000, //Whether preceded by value which is then function or dereference 
-        FLAG_COUNT_MASK=        0x7FFF, //Lower 14 bits hold number of elements
+        //lists - two bits for colon count
+        FLAG_LIST_MASK=         0xC000,     //Two bits to count number of colons in list slice
+        //dicts/sets - reuse same two bits as lists
+        FLAG_DICT_SET_MASK=     0xC000,     //Two bits for dict/set parse state    
+        //Used for functions, sets, lists, and dicts
+        FLAG_FUNC_DEREF=        0x2000,     //Whether preceded by value which must be function or dereference 
+        FLAG_COUNT_MASK=        0x1FFF,     //Count of commas encountered
+        FLAG_SHIFT_COUNT=       14          //Shift 16 bit flag to access top two bits
+    };
+
+    enum DictSetParseStates
+    {
+        PARSE_BEGIN=            0x0000,
+        PARSE_SET=              0x4000,
+        PARSE_DICT_COMMA_NEXT=  0x8000,
+        PARSE_DICT_COLON_NEXT=  0xC000,
     };
 
     //Compile stack is interleaved with different types so only pop data of the desired class

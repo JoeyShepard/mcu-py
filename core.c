@@ -200,13 +200,33 @@ py_error_t py_run(uint8_t *bytecode)
                 }
                 debug(">>");
                 break;
-            case TOKEN_MAKE_LIST:
-                break;
             case TOKEN_RETURN:
                 break;
             case TOKEN_FUNC:
                 debug("%d",*bytecode);
                 bytecode++;
+                break;
+            case TOKEN_TUPLE:
+                debug("%d",*(uint16_t *)bytecode);
+                bytecode+=2;
+                break;
+            case TOKEN_LIST:
+                debug("%d",*(uint16_t *)bytecode);
+                bytecode+=2;
+                break;
+            case TOKEN_DICT:
+                debug("%d",*(uint16_t *)bytecode);
+                bytecode+=2;
+                break;
+            case TOKEN_SET:
+                debug("%d",*(uint16_t *)bytecode);
+                bytecode+=2;
+                break;
+            case TOKEN_NONE_OBJ:
+                break;
+            case TOKEN_SLICE_INDEX:
+                break;
+            case TOKEN_INDEX:
                 break;
         } //switch(op)
 

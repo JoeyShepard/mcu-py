@@ -1,6 +1,0 @@
-   text	   data	    bss	    dec	    hex	filename
-    183	      0	      0	    183	     b7	core.o
-    237	      0	      0	    237	     ed	execute.o
-     32	      0	     16	     48	     30	globals.o
-    288	      8	      0	    296	    128	tables.o
-    627	      0	      0	    627	    273	test.o

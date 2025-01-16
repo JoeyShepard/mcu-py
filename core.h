@@ -148,9 +148,15 @@
         TOKEN_INT16,
         TOKEN_INT32,
         TOKEN_STRING,
-        TOKEN_MAKE_LIST,
         TOKEN_RETURN,
         TOKEN_FUNC,
+        TOKEN_TUPLE,
+        TOKEN_LIST,
+        TOKEN_DICT,
+        TOKEN_SET,
+        TOKEN_NONE_OBJ,
+        TOKEN_SLICE_INDEX,
+        TOKEN_INDEX,
         //Tokens starting here are for storing things like variable names on stack during compilation
         TOKEN_VAR_NAME,
 
