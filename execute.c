@@ -254,7 +254,7 @@ static bool py_custom_pop(uint8_t *data, uint8_t pop_class)
     if (obj==NULL) return false;
 
     //Copy found object
-    uint8_t obj_size=py_token_size(data[0])+1;
+    uint8_t obj_size=py_token_size(obj[0])+1;
     for (int16_t i=0;i<obj_size;i++)
     {
         data[i]=obj[i];
@@ -432,7 +432,7 @@ py_error_t py_execute(const char *text)
     uint8_t stack_token_precedence;
     uint8_t *obj_ptr;
     //TODO: explain size. should be big enough for biggest possible.
-    //      3 - token and 16 bit extra data for ( [ {
+    //      3 - 8 bits for token and 16 bits for extra data for enum OpeningFlags for ( [ {
     uint8_t stack_buffer[3];
 
     do
@@ -763,8 +763,6 @@ py_error_t py_execute(const char *text)
                                         uint16_t element_data=*(uint16_t *)(stack_buffer+1);
                                         uint16_t element_count=element_data&FLAG_COUNT_MASK;
 
-                                        debug("element_data: %X\n",element_data);
-
                                         //Preset element count since used by most options below
                                         *(uint16_t *)(stack_buffer+1)=element_count;
 
@@ -820,15 +818,9 @@ py_error_t py_execute(const char *text)
                                         }
                                         else if (stack_buffer[0]==TOKEN_LSBRACKET)
                                         {
-                                            
-                                            debug("processing: %X\n",element_data);
-
                                             //Found [ so must be list or indexing of list or dict
                                             if (element_data&FLAG_LIST_MASK)
                                             {
-                                                
-                                                debug("Colons!\n");
-
                                                 //Slice since at least one colon
                                                 if ((element_data&FLAG_FUNC_DEREF)==false)
                                                 {
@@ -837,18 +829,11 @@ py_error_t py_execute(const char *text)
                                                 }
 
                                                 //Count of colons in slice
-                                                element_count=(element_data&FLAG_LIST_MASK)>>FLAG_SHIFT_COUNT;
-
-                                                debug("element count: %d\n",element_count);
-
-                                                element_count=2-element_count;
-                                                
+                                                element_count=2-((element_data&FLAG_LIST_MASK)>>FLAG_SHIFT_COUNT);
+                                                if (exec_flags&FLAG_COLON_LAST) element_count++;
+                                               
                                                 //Insert None if any slice numbers missing at end since [::] == [None:None:None] 
                                                 stack_buffer[0]=TOKEN_NONE_OBJ;
-                                                if (exec_flags&FLAG_COLON_LAST) element_count++;
-
-                                                debug("element count: %d\n",element_count);
-
                                                 for (int i=0;i<element_count;i++)
                                                 {
                                                     py_append(compile_target,stack_buffer,1);
@@ -856,7 +841,7 @@ py_error_t py_execute(const char *text)
 
                                                 //Slice
                                                 stack_buffer[0]=TOKEN_SLICE_INDEX;
-                                                py_append(compile_target,stack_buffer,3);
+                                                py_append(compile_target,stack_buffer,1);
                                             }
                                             else
                                             {
@@ -869,6 +854,10 @@ py_error_t py_execute(const char *text)
                                                     //Empty element at end like [1,2,] so decrease count
                                                     element_count--;
                                                 }
+
+                                                //Element count used for dict and set below
+                                                *(uint16_t *)(stack_buffer+1)=element_count;
+
                                                 if (element_data&FLAG_FUNC_DEREF)
                                                 {
                                                     //Indexing - either single element like x[1] or tuple like x[1,2] or x[1,]
@@ -883,7 +872,7 @@ py_error_t py_execute(const char *text)
                                                         stack_buffer[0]=TOKEN_TUPLE;
                                                         py_append(compile_target,stack_buffer,3);
                                                     }
-                                                    //Index in both cases
+                                                    //Index in both if and else cases above
                                                     stack_buffer[0]=TOKEN_INDEX;
                                                     py_append(compile_target,stack_buffer,1);
                                                 }
@@ -910,6 +899,9 @@ py_error_t py_execute(const char *text)
                                                 //Empty element at end like {1:2,} so decrease count
                                                 element_count--;
                                             }
+
+                                            //Element count used for dict and set below
+                                            *(uint16_t *)(stack_buffer+1)=element_count;
                                             
                                             uint16_t temp_flags=element_data&FLAG_DICT_SET_MASK;
                                             if (temp_flags==PARSE_BEGIN)
@@ -998,7 +990,6 @@ py_error_t py_execute(const char *text)
                                 {
                                     if (*obj_ptr==TOKEN_LSBRACKET)
                                     {
-
                                         //Found [ so make sure not slice, ie [1:2, 
                                         if ((*element_data)&FLAG_LIST_MASK)
                                         {
@@ -1060,19 +1051,15 @@ py_error_t py_execute(const char *text)
                                         //Error - slice already has two colons, can't add third, ie [::: 
                                         return py_error_set(PY_ERROR_SYNTAX,0);
                                     }
-                                    
-                                    debug("before: %X\n",*element_data);
 
                                     //Increase colon count by one
                                     *element_data+=(1<<FLAG_SHIFT_COUNT);
-
-                                    debug("after: %X\n",*element_data);
-
+                                    
                                     //Insert None as necessary as [:] and [::] == [None:None:None]
                                     if ((last_interpreter_state==STATE_LSBRACKET)||
                                         (exec_flags&FLAG_COLON_LAST))
                                     {
-                                        stack_buffer[0]=TOKEN_MUL;
+                                        stack_buffer[0]=TOKEN_NONE_OBJ;
                                         py_append(compile_target,stack_buffer,1);
                                     }
                                 }

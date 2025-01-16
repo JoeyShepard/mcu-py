@@ -3,7 +3,7 @@
      32	      0	      0	     32	     20	custom.o
    3654	   1184	  10032	  14870	   3a16	debug.o
     140	      0	      0	    140	     8c	error.o
-   4078	      0	      0	   4078	    fee	execute.o
+   3753	      0	      0	   3753	    ea9	execute.o
      32	      0	     16	     48	     30	globals.o
     646	     48	      0	    694	    2b6	tables.o
     435	      0	      0	    435	    1b3	test.o
