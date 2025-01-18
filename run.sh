@@ -2,12 +2,7 @@
 FILENAME=test
 
 #Compile
-#gcc -Werror -Os -c -Wa,-aghlns=combined.s *.c
-gcc -Werror -Os -c -g *.c
-retval=$?; if [ $retval -ne 0 ]; then exit; fi
-
-#Link
-gcc -Os *.o -o $FILENAME 
+./compile.sh
 retval=$?; if [ $retval -ne 0 ]; then exit; fi
 
 #Sizes before running! Otherwise no way to see them if ie go into debug loop

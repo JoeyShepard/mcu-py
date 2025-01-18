@@ -71,6 +71,12 @@ IMPORTANT:
       - enough to know this is expected to be a global if not referenced locally yet
   - separate ref count in list of globals to keep list small
     - if no more refs, delete from list and garbage collect
+
+CURRENTLY
+- variables
+  - assignments
+- keywords
+- . notation
 */
 
 void test_error_handler(uint8_t e, uint16_t line_number)

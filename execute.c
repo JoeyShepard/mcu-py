@@ -10,6 +10,24 @@
 #include "globals.h"
 #include "tables.h"
 
+//Static function declarations
+//============================
+//TODO: arrange functions by group
+static bool py_cstrcmp(const char *str1, uint16_t len1, const char *str2, uint16_t len2);
+static uint8_t py_classify_input(const char input_char);
+static uint8_t py_lookup_op(char op);
+static uint8_t py_next_symbol(const char **text, uint16_t *len);
+static int16_t py_find_symbol(const char *symbol_begin, uint8_t symbol_len);
+static uint8_t py_token_size(uint8_t token);
+static py_error_t py_custom_push(const void *data, uint16_t data_size);
+static bool py_custom_pop(uint8_t *data, uint8_t pop_class);
+static uint8_t *py_peek_stack(uint8_t *obj, uint8_t pop_class);
+static uint8_t *py_remove_stack(uint8_t *obj);
+static uint8_t py_find_precedence(uint8_t token);
+//TODO: move to core.c?
+static py_error_t py_append(uint8_t *obj, const void *data, uint16_t data_size);
+
+
 //Compare counted strings
 //Ok to pass in null-terminated string here as long as len1 and len2 don't include null terminator
 static bool py_cstrcmp(const char *str1, uint16_t len1, const char *str2, uint16_t len2)
@@ -17,7 +35,7 @@ static bool py_cstrcmp(const char *str1, uint16_t len1, const char *str2, uint16
     //Counted strings must match in length - mismatch
     if (len1!=len2) return false;
     
-    for (uint16_t i;i<len1;i++)
+    for (uint16_t i=0;i<len1;i++)
     {
         //Hit null terminator so return mismatch since at least one string is counted and therefore not null terminated
         //Othwerwise, ok to pass in null-terminated string as long as len1 and len2 don't include null terminator
@@ -30,17 +48,6 @@ static bool py_cstrcmp(const char *str1, uint16_t len1, const char *str2, uint16
     return true;
 }
 
-//TODO: used?
-//Check if character is in string
-static bool py_strchr(const char *str, char ch, size_t size)
-{
-    for (uint16_t i=0;i<size;i++)
-    {
-        if (str[i]==ch) return true;
-    }
-    return false;
-}
-
 //Classify character of source
 static uint8_t py_classify_input(const char input_char)
 { 
@@ -48,7 +55,6 @@ static uint8_t py_classify_input(const char input_char)
     if (input_char>PY_CHAR_LAST_VALID) return INPUT_ERROR;
 
     //Classify input character
-    uint8_t char_type=0;
     uint16_t total=0;
     const uint8_t *table=py_state_chars;
     while(1)
@@ -76,17 +82,18 @@ static uint8_t py_lookup_op(char op)
         }
         op_list++;
     }
+    //Should never happen but just in case
+    return TOKEN_NONE;
 }
 
 static uint8_t py_next_symbol(const char **text, uint16_t *len)
 {
-    bool processing=true;
     uint8_t symbol_state=SYMBOL_NONE;
 
     //Length of symbol - returned to caller
     *len=0;
 
-    while (processing)
+    while (1)
     {
         //Get next character of symbol
         unsigned char input_char=*(*text+*len);
@@ -164,10 +171,10 @@ static uint8_t py_next_symbol(const char **text, uint16_t *len)
     }
 }
 
-/* UNFINISHED! */
 static int16_t py_find_symbol(const char *symbol_begin,uint8_t symbol_len)
 {
     //Find length of symbol
+    //TODO: why preserve original pointer?
     const char *symbol_len_ptr=symbol_begin;
     
     //Look for symbol in tables
@@ -369,7 +376,7 @@ static uint8_t *py_remove_stack(uint8_t *obj)
 
 static uint8_t py_find_precedence(uint8_t token)
 {
-    const char *table_ptr=py_op_precedence;
+    const uint8_t *table_ptr=py_op_precedence;
     uint8_t token_max=0;
     uint8_t precedence=0;
 
@@ -417,8 +424,8 @@ py_error_t py_execute(const char *text)
         uint8_t symbol;
         uint8_t token;
     } symbol_queue[3];
-    uint8_t interpreter_state;
-    uint8_t last_interpreter_state;
+    uint8_t interpreter_state=STATE_BEGIN;          //Assigned immediately below but assign here too to appease linter
+    uint8_t last_interpreter_state=STATE_NONE;      //Assigned immediately below but assign here too to appease linter
     uint8_t exec_flags=FLAG_RESET_STATE;
     uint16_t line_number=0;
     uint8_t *compile_target=NULL;
@@ -427,7 +434,6 @@ py_error_t py_execute(const char *text)
     //Local variables used temporarily in code
     uint16_t symbol_len;
     const uint8_t *table_ptr;       //Used for state machine and precedence lookups
-    uint8_t append_data[2];         //Buffer for data passed to py_append
     uint8_t token_max;
     uint8_t stack_token_precedence;
     uint8_t *obj_ptr;
@@ -452,8 +458,8 @@ py_error_t py_execute(const char *text)
             {
                 //Allocate temp mem for code outside of function
                 compile_target=py_allocate(0);
-                append_data[0]=OBJECT_TEMP;
-                py_append(compile_target,append_data,1);
+                stack_buffer[0]=OBJECT_TEMP;
+                py_append(compile_target,stack_buffer,1);
             }
         }
 
@@ -561,7 +567,7 @@ py_error_t py_execute(const char *text)
                     case SYMBOL_OP:
                         //Determine next interpreter state
                         if ((interpreter_state==STATE_BEGIN)&&
-                            (input_token==TOKEN_RPAREN)||(input_token==TOKEN_RCBRACKET))
+                            ((input_token==TOKEN_RPAREN)||(input_token==TOKEN_RCBRACKET)))
                         {
                             //Exceptions to look up table:
                             //  ) after , for (1,)
@@ -649,8 +655,8 @@ py_error_t py_execute(const char *text)
                         if (input_symbol==SYMBOL_END_ALL)
                         {
                             //Compile return token since done processing
-                            append_data[0]=TOKEN_RETURN;
-                            py_append(compile_target,append_data,1);
+                            stack_buffer[0]=TOKEN_RETURN;
+                            py_append(compile_target,stack_buffer,1);
                             exec_flags|=FLAG_DONE;
                         }
                         break;
@@ -681,28 +687,28 @@ py_error_t py_execute(const char *text)
                         uint16_t data_size;
                         if ((num>=INT8_MIN)&&(num<=INT8_MAX))
                         {
-                            append_data[0]=TOKEN_INT8;
+                            stack_buffer[0]=TOKEN_INT8;
                             data_size=1;
                         }
                         else if ((num>=INT16_MIN)&&(num<=INT16_MAX))
                         {
-                            append_data[0]=TOKEN_INT16;
+                            stack_buffer[0]=TOKEN_INT16;
                             data_size=2;
                         }
                         else 
                         {
-                            append_data[0]=TOKEN_INT32;
+                            stack_buffer[0]=TOKEN_INT32;
                             data_size=4;
                         }
-                        py_append(compile_target,append_data,1);
+                        py_append(compile_target,stack_buffer,1);
                         py_append(compile_target,&num,data_size);
                         break;
                     case SYMBOL_STRING:
                         //Compile value
-                        append_data[0]=TOKEN_STRING;
-                        py_append(compile_target,append_data,1);
-                        *(uint16_t *)append_data=symbol_len-2;          //-2 to length to discard quotes
-                        py_append(compile_target,append_data,2);        //Write length of string
+                        stack_buffer[0]=TOKEN_STRING;
+                        py_append(compile_target,stack_buffer,1);
+                        *(uint16_t *)stack_buffer=symbol_len-2;         //-2 to length to discard quotes
+                        py_append(compile_target,stack_buffer,2);       //Write length of string
                         py_append(compile_target,text+1,symbol_len-2);  //Write string data. +1 to start after first quote
                         break;
                     case SYMBOL_OP:

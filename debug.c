@@ -239,16 +239,8 @@ const char *debug_value(const char *group, uint16_t value)
     */
 
     //Make sure index into debug messages is not past end
-    for (int i;i<=value;i++)
+    for (int i=0;i<=value;i++)
     {
-
-        /*
-        printf("Testing - %d %d ",i,value);
-        printf("%s ",debug_messages[i]);
-        printf("%c \n",debug_messages[i][0]);
-        */
-        
-
         if (debug_messages[i][0]==0)
         {
             printf("Error: value %d out of range for debug type '%s' in debug_value.\n",value,group);

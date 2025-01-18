@@ -3,7 +3,7 @@ FILENAME=test
 
 #Compile
 #gcc -Werror -Os -c -Wa,-aghlns=combined.s *.c
-gcc -Werror -Os -c -g *.c
+gcc -Werror -Wall -Os -c -g *.c
 retval=$?; if [ $retval -ne 0 ]; then exit $retval; fi
 
 #Link

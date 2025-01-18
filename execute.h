@@ -119,24 +119,4 @@
         POP_OPENINGS,           //Find opening brackets - ( { [
     };
 
-    //Functions
-    //=========
-
-    //TODO: arrange functions by group
-    //Static functions - not used outside of execute.c
-    static bool py_cstrcmp(const char *str1, uint16_t len1, const char *str2, uint16_t len2);
-    static bool py_strchr(const char *str, char ch, size_t size);
-    static uint8_t py_classify_input(const char input_char);
-    static uint8_t py_lookup_op(char op);
-    static uint8_t py_next_symbol(const char **text, uint16_t *len);
-    static int16_t py_find_symbol(const char *symbol_begin, uint8_t symbol_len);
-    static uint8_t py_token_size(uint8_t token);
-    static py_error_t py_custom_push(const void *data, uint16_t data_size);
-    static bool py_custom_pop(uint8_t *data, uint8_t pop_class);
-    static uint8_t *py_peek_stack(uint8_t *obj, uint8_t pop_class);
-    static uint8_t *py_remove_stack(uint8_t *obj);
-    static uint8_t py_find_precedence(uint8_t token);
-    //TODO: move to core.c?
-    static py_error_t py_append(uint8_t *obj, const void *data, uint16_t data_size);
-
 #endif
