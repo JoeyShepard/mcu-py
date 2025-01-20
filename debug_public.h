@@ -16,5 +16,6 @@
     int debug_print_log();
     int debug_reset_log();
     int debug_stack();
+    int debug_cstr(const uint8_t *text, int len);
 
 #endif

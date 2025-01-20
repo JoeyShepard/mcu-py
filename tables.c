@@ -9,53 +9,45 @@
 
 //Paste tables from spreadsheet starting here:
 
-const char *py_commands=
-"\x3""int"
+const char *py_functions=
+"\x3""abs"
+"\x3""bin"
+"\x3""chr"
+"\x4""dict"
+"\x6""divmod"
 "\x3""hex"
-"\x5""strip"
-"\x6""rstrip"
-"\x6""lstrip"
-"\x5""split"
-"\x3""for"
-"\x5""while"
-"\x4""True"
-"\x5""False"
-"\x2""if"
-"\x4""else"
-"\x4""elif"
+"\x5""input"
+"\x3""int"
+"\x3""len"
+"\x4""list"
+"\x3""max"
+"\x3""min"
+"\x3""oct"
+"\x3""ord"
+"\x5""print"
+"\x5""range"
+"\x3""set"
+"\x6""sorted"
+"\x3""str"
+"\x5""tuple"
+"\0";
+
+const char *py_keywords=
 "\x5""break"
 "\x8""continue"
-"\x4""join"
-"\x3""len"
 "\x3""def"
 "\x3""del"
-"\x6""return"
+"\x4""elif"
+"\x4""else"
+"\x5""False"
+"\x3""for"
+"\x6""global"
+"\x2""if"
 "\x4""None"
 "\x4""pass"
-"\x3""str"
-"\x5""float"
-"\x5""index"
-"\x5""upper"
-"\x5""lower"
-"\x4""find"
-"\x7""replace"
-"\x7""reverse"
-"\x4""sort"
-"\x6""remove"
-"\x6""insert"
-"\x3""pop"
-"\x5""items"
-"\x4""keys"
-"\x6""values"
-"\x5""print"
-"\x3""chr"
-"\x3""ord"
-"\x3""min"
-"\x3""max"
-"\x5""range"
-"\x4""free"
-"\x7""delvars"
-"\x7""deldefs"
+"\x6""return"
+"\x4""True"
+"\x5""while"
 "\0";
 
 const uint8_t py_symbol_state[][PY_SYMBOL_ROW_SIZE]={
@@ -189,6 +181,5 @@ const uint8_t py_state_table[]=
 1,(STATE_ERROR<<4)|STATE_NOT,(STATE_NONE<<4)|STATE_VAL,                         //TOKEN_BOOL_NOT
 2,(STATE_REQ<<4)|STATE_ERROR,(STATE_NONE<<4)|STATE_VAL,                         //TOKEN_BOOL_AND
 };
-
 
 

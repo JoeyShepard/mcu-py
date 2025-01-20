@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "core.h"
+#include "custom.h"
 #include "debug.h"
 #include "error.h"
 #include "globals.h"
@@ -10,6 +11,9 @@
 //==============
 py_error_t py_init(uint8_t *mem, uint16_t size, void (*error_func)(uint8_t, uint16_t))
 {
+    //Make sure maximum symbol size defined in custom.h fits in one byte
+    if (PY_MAX_SYMBOL_SIZE>=255) return PY_ERROR_MAX_SYMBOL_EXCEEDED;
+
     py_settings.mem=mem;
     py_settings.initialized=true;
 
@@ -20,13 +24,22 @@ py_error_t py_init(uint8_t *mem, uint16_t size, void (*error_func)(uint8_t, uint
     *(uint16_t*)py_heap_begin=0;  //Linked list
     py_heap_ptr=PY_MEM_HEAP_BEGIN;
 
+    //Add object to hold global variable values
+    uint8_t *globals=py_allocate(0);
+    uint8_t obj_type=OBJECT_GLOBAL_VALUES;
+    py_append(globals,&obj_type,1);
+
+    //Add object to hold global variable names
+    globals=py_allocate(0);
+    obj_type=OBJECT_GLOBAL_NAMES;
+    py_append(globals,&obj_type,1);
+
     return py_error_set(PY_ERROR_NONE,0);
 }
 
 
 //Stack
 //=====
-//Could combine with general purpose multi-byte push in execute.c but speed boost should be worth increased size
 py_error_t py_push(struct StackItem item)
 {
     if (sizeof(struct StackItem)>py_free) return py_error_set(PY_ERROR_OUT_OF_MEM,0);
@@ -56,11 +69,32 @@ uint8_t *py_allocate(uint16_t size)
     return ret_val;
 }
 
+py_error_t py_append(uint8_t *obj, const void *data, uint16_t size)
+{
+    //No need to add two bytes to size since end of list marker already exists
+    if (size>py_free)
+    {
+        return py_error_set(PY_ERROR_OUT_OF_MEM,0);
+    }
+    uint8_t *data_dest=py_heap_current;
+    for (uint16_t i=0;i<size;i++)
+    {
+        *data_dest=*(uint8_t *)data;
+        data++;
+        data_dest++;
+    }
+    *(uint16_t *)(obj)+=size;
+    py_heap_ptr+=size;
+    *(uint16_t*)(py_heap_current)=0;
+    return PY_ERROR_NONE;
+}
+
+
 //Execution
 //=========
 //bytecode - pointer to beginning of object which starts with:
 //- uint16_t: distance to next object
-//- uint8_t: enum ObjectTypes - should be OBJECT_TEMP
+//- uint8_t: enum ObjectTypes - should be OBJECT_CODE
 py_error_t py_run(uint8_t *bytecode)
 {
     //Debugging
@@ -227,6 +261,15 @@ py_error_t py_run(uint8_t *bytecode)
             case TOKEN_SLICE_INDEX:
                 break;
             case TOKEN_INDEX:
+                break;
+            case TOKEN_BUILTIN_FUNC:
+                debug("%s",debug_value("builtin",*bytecode));
+                bytecode++;
+
+                //TODO:
+                //put pointer to builtin in stack item if it fits
+                //if with sizeof will optimize out
+
                 break;
         } //switch(op)
 

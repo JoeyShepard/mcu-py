@@ -77,21 +77,22 @@ static const char *debug_symbol_input_type[]=
 
 static const char *debug_object_type[]=
 {
-    "OBJECT_TEMP",
+    "OBJECT_CODE",
     "OBJECT_INT",
+    "OBJECT_FLOAT",
     "OBJECT_STRING",
+    "OBJECT_BOOL",
     "OBJECT_VAR",    
-    "OBJECT_FUNC",   
     "OBJECT_BUILTIN",
     "OBJECT_LIST",
     "OBJECT_DICT",
     "OBJECT_TUPLE",
-    "OBJECT_ITER",   
-    "OBJECT_BOOL",
+    "OBJECT_SET", 
+    "OBJECT_RANGE",   
     "OBJECT_NONE",   
     "OBJECT_FREE",   
-    "OBJECT_FLOAT",  
-    "OBJECT_SET",     
+    "OBJECT_GLOBAL_VALUES",
+    "OBJECT_GLOBAL_NAMES",
     //Don't remove! Marks last entry
     ""
 };
@@ -160,10 +161,9 @@ static const char *debug_token[]=
     "TOKEN_NONE_OBJ",
     "TOKEN_SLICE_INDEX",
     "TOKEN_INDEX",
+    "TOKEN_BUILTIN_FUNC",
     //Tokens starting here are for storing things like variable names on stack during compilation
-    "TOKEN_VAR_NAME",
-
-
+    "TOKEN_VAR_INFO",
     //Don't remove! Marks last entry
     ""
 };
@@ -182,11 +182,36 @@ static const char *debug_error[]=
     "PY_ERROR_ELEMENT_OVERFLOW",
     "PY_ERROR_MISSING_ARG",
     "PY_ERROR_TOO_MANY_ARGS",
+    "PY_ERROR_MAX_SYMBOL_EXCEEDED",
+    "PY_ERROR_SYMBOL_TOO_LARGE",
 
     //Don't remove! Marks last entry
     ""
 };
 
+static const char *debug_builtin[]=
+{
+    "FUNC_ABS",
+    "FUNC_BIN",
+    "FUNC_CHR",
+    "FUNC_DICT",
+    "FUNC_DIVMOD",
+    "FUNC_HEX",
+    "FUNC_INPUT",
+    "FUNC_INT",
+    "FUNC_LEN",
+    "FUNC_LIST",
+    "FUNC_MAX",
+    "FUNC_MIN",
+    "FUNC_OCT",
+    "FUNC_ORD",
+    "FUNC_PRINT",
+    "FUNC_RANGE",
+    "FUNC_SET",
+    "FUNC_SORTED",
+    "FUNC_STR",
+    "FUNC_TUPLE",
+};
 
 static struct DebugLookup debug_lookup[]=
 {
@@ -196,6 +221,7 @@ static struct DebugLookup debug_lookup[]=
     {"object type",         debug_object_type},
     {"token",               debug_token},
     {"error",               debug_error},
+    {"builtin",             debug_builtin},
     //Don't remove! Marks end of list.
     {"",0}
 };
@@ -379,4 +405,9 @@ int debug_stack()
    
 
     return 0;
+}
+
+int debug_cstr(const uint8_t *text, int len)
+{
+    for (int i=0;i<len;i++) debug("%c",text[i]);
 }

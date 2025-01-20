@@ -17,15 +17,14 @@ static bool py_cstrcmp(const char *str1, uint16_t len1, const char *str2, uint16
 static uint8_t py_classify_input(const char input_char);
 static uint8_t py_lookup_op(char op);
 static uint8_t py_next_symbol(const char **text, uint16_t *len);
-static int16_t py_find_symbol(const char *symbol_begin, uint8_t symbol_len);
+static int8_t py_find_symbol(const char *list, const char *symbol_begin, uint8_t symbol_len);
 static uint8_t py_token_size(uint8_t token);
 static py_error_t py_custom_push(const void *data, uint16_t data_size);
 static bool py_custom_pop(uint8_t *data, uint8_t pop_class);
 static uint8_t *py_peek_stack(uint8_t *obj, uint8_t pop_class);
+static uint8_t *py_var_stack(const char *text, uint8_t symbol_len);
 static uint8_t *py_remove_stack(uint8_t *obj);
 static uint8_t py_find_precedence(uint8_t token);
-//TODO: move to core.c?
-static py_error_t py_append(uint8_t *obj, const void *data, uint16_t data_size);
 
 
 //Compare counted strings
@@ -166,52 +165,36 @@ static uint8_t py_next_symbol(const char **text, uint16_t *len)
             {
                 //Beginning of symbol found previously - advance length but not source pointer
                 (*len)++;
+
+                //Limit size of variable and function names as defined in custom.h
+                if (*len==PY_MAX_SYMBOL_SIZE)
+                {
+                    return SYMBOL_ERROR; 
+                }
             }
         }
     }
 }
 
-static int16_t py_find_symbol(const char *symbol_begin,uint8_t symbol_len)
+static int8_t py_find_symbol(const char *symbol_list, const char *symbol_begin, uint8_t symbol_len)
 {
-    //Find length of symbol
-    //TODO: why preserve original pointer?
-    const char *symbol_len_ptr=symbol_begin;
-    
-    //Look for symbol in tables
-    const char *commands_ptr=py_commands;
-    uint16_t command_id=0;
-    while (*commands_ptr)
+    //Look for symbol in symbol list
+    int8_t symbol_id=0;
+    while (*symbol_list)
     {
-        //Compare counted string lengths
-        if (*commands_ptr!=symbol_len)
+        uint8_t list_symbol_len=*symbol_list;
+        if (py_cstrcmp(symbol_list+1,list_symbol_len,symbol_begin,symbol_len))
         {
-            //Length of symbol doesn't match length of command - skip
-            commands_ptr+=*commands_ptr+1;
-            command_id++;
+            //Match found - return ID
+            return symbol_id;
         }
         else
         {
-            //TODO: replace with py_cstrcmp
-
-            //Length of symbol matches length of command - compare letters
-            bool match=true;
-            for (int i=0;i<symbol_len;i++)
-            {
-                if (commands_ptr[i+1]!=symbol_begin[i])
-                {
-                    //Words don't match - skip command
-                    match=false;
-                    commands_ptr+=symbol_len+1;
-                    command_id++;
-                    break;
-                }
-            }
-            //Loop finished - symbol matches command. Return ID of command.
-            if (match) return command_id;
+            //Match not found - move to next symbol in list
+            symbol_list+=list_symbol_len+1;
+            symbol_id++;
         }
     }
-
-    //TODO: change return from -1 since type is uint8_t
 
     //Symbol not found
     return -1;
@@ -233,6 +216,8 @@ static uint8_t py_token_size(uint8_t token)
         case TOKEN_DICT:
         case TOKEN_SET:
             return sizeof(uint16_t);
+        case TOKEN_VAR_INFO:
+            return sizeof(uint8_t)+sizeof(uint8_t)+sizeof(uint16_t);
         default:
             return 0;
     }
@@ -301,7 +286,7 @@ static uint8_t *py_peek_stack(uint8_t *obj, uint8_t pop_class)
                 //End of line - all operators including ( { [
                 switch (*new_obj)
                 {
-                    case TOKEN_VAR_NAME:
+                    case TOKEN_VAR_INFO:
                         //Not looking for these - keep searching
                         break;
                     default:
@@ -317,7 +302,7 @@ static uint8_t *py_peek_stack(uint8_t *obj, uint8_t pop_class)
                 //Shunting Yard - operators not including ( { [
                 switch (*new_obj)
                 {
-                    case TOKEN_VAR_NAME:
+                    case TOKEN_VAR_INFO:
                         //Not looking for these - keep searching
                         break;
                     case TOKEN_LPAREN:
@@ -333,6 +318,7 @@ static uint8_t *py_peek_stack(uint8_t *obj, uint8_t pop_class)
                             //Only return if different from starting object
                             return new_obj;
                         }
+                        break;
                 }
                 break;
             case POP_OPENINGS:
@@ -348,9 +334,21 @@ static uint8_t *py_peek_stack(uint8_t *obj, uint8_t pop_class)
                             //Only return if different from starting object
                             return new_obj;
                         }
+                        break;
                     default:
                         //Not looking for these - keep searching
                         break;
+                }
+                break;
+            case POP_VAR_INFO:
+                //Find variable info
+                if (*new_obj==TOKEN_VAR_INFO)
+                {
+                    if (new_obj!=obj)
+                    {
+                        //Only return if different from starting object
+                        return new_obj;
+                    }
                 }
                 break;
             default:
@@ -360,6 +358,57 @@ static uint8_t *py_peek_stack(uint8_t *obj, uint8_t pop_class)
         //Advance pointer
         new_obj+=py_token_size(*new_obj)+1;
     }
+}
+
+static uint8_t *py_var_stack(const char *text, uint8_t symbol_len)
+{
+    uint8_t *obj_ptr=NULL;    
+    while(1)
+    {
+        //Check if variable exists already
+        obj_ptr=py_peek_stack(obj_ptr,POP_VAR_INFO);
+        if (obj_ptr==NULL)
+        {
+            //No more variable objects on stack - create new below
+
+            debug("No var found\n");
+
+            break;
+        }
+        else
+        {
+            debug("Testing: ");
+            debug_cstr(text,symbol_len);
+            debug(" == ");
+            //debug_cstr(py_settings.mem+(*(uint16_t*)(obj_ptr+VAR_OFFSET)),obj_ptr[VAR_SIZE]);
+            debug("?\n")
+            debug(" - %d %d\n",obj_ptr[VAR_SIZE],(*(uint16_t*)(obj_ptr+VAR_OFFSET)));
+
+            //Variable found - check if name matches
+            if (py_cstrcmp(text,symbol_len,py_settings.mem+obj_ptr[VAR_SIZE],obj_ptr[VAR_SIZE]))
+            {
+                debug("Matches\n");
+
+                //Name matches - return pointer
+                return obj_ptr;
+            }
+            else debug("Doesn't match\n");
+        }
+    }
+
+    debug("Not found - creating new var\n");
+
+    //Variable not found - create new
+    //TODO: not done! need pointer to original source to calculate offset
+    /*
+    uint8_t stack_buffer[PY_STACK_VAR_SIZE];
+    stack_buffer[VAR_TOKEN]=TOKEN_VAR_INFO;
+    stack_buffer[VAR_FLAGS]=0;
+    stack_buffer[VAR_SIZE]=symbol_len;
+    *(uint16_t *)(stack_buffer+VAR_OFFSET)=(((uint8_t*)text)-py_settings.mem);
+    py_custom_push(stack_buffer,PY_STACK_VAR_SIZE);
+    return py_peek_stack(NULL,POP_VAR_INFO);
+    */
 }
 
 static uint8_t *py_remove_stack(uint8_t *obj)
@@ -392,25 +441,6 @@ static uint8_t py_find_precedence(uint8_t token)
     }
 }
 
-static py_error_t py_append(uint8_t *obj, const void *data, uint16_t size)
-{
-    //No need to add two bytes to size since end of list marker already exists
-    if (size>py_free)
-    {
-        return py_error_set(PY_ERROR_OUT_OF_MEM,0);
-    }
-    uint8_t *data_dest=py_heap_current;
-    for (uint16_t i=0;i<size;i++)
-    {
-        *data_dest=*(uint8_t *)data;
-        data++;
-        data_dest++;
-    }
-    *(uint16_t *)(obj)+=size;
-    py_heap_ptr+=size;
-    *(uint16_t*)(py_heap_current)=0;
-    return PY_ERROR_NONE;
-}
 
 //Execute Python source passed in as a string
 py_error_t py_execute(const char *text)
@@ -441,6 +471,33 @@ py_error_t py_execute(const char *text)
     //      3 - 8 bits for token and 16 bits for extra data for enum OpeningFlags for ( [ {
     uint8_t stack_buffer[3];
 
+    
+    //Debugging
+    {
+        uint8_t *debug_ptr=py_peek_stack(NULL,POP_VAR_INFO);
+        printf("No cars. Should be null: %p\n",debug_ptr);
+
+        debug_ptr=py_var_stack("abc",3);
+        printf("abc: %p\n",debug_ptr);
+        debug_ptr=py_peek_stack(NULL,POP_VAR_INFO);
+        printf("abc: %p\n",debug_ptr);
+
+        debug_ptr=py_var_stack("foo",3);
+        printf("foo: %p\n",debug_ptr);
+        debug_ptr=py_peek_stack(NULL,POP_VAR_INFO);
+        printf("foo: %p\n",debug_ptr);
+
+        debug_ptr=py_peek_stack(NULL,POP_VAR_INFO);
+        debug_ptr=py_peek_stack(debug_ptr,POP_VAR_INFO);
+        printf("abc: %p\n",debug_ptr);
+
+
+        exit(1);
+    }
+    //Debugging
+
+
+
     do
     {
         //Reset state at beginning of every line
@@ -458,7 +515,7 @@ py_error_t py_execute(const char *text)
             {
                 //Allocate temp mem for code outside of function
                 compile_target=py_allocate(0);
-                stack_buffer[0]=OBJECT_TEMP;
+                stack_buffer[0]=OBJECT_CODE;
                 py_append(compile_target,stack_buffer,1);
             }
         }
@@ -661,6 +718,48 @@ py_error_t py_execute(const char *text)
                         }
                         break;
                     case SYMBOL_ALPHA:
+                        //Check if alpha symbol is built-in Python function
+                        int8_t symbol_id=py_find_symbol(py_functions,text,symbol_len);
+                        if (symbol_id!=-1)
+                        {
+                            //Built-in function
+                            stack_buffer[0]=TOKEN_BUILTIN_FUNC;
+                            stack_buffer[1]=symbol_id;
+                            py_append(compile_target,stack_buffer,2);
+                        }
+                        else
+                        {
+                            //Check if alpha symbol is keyword like break or def
+                            int8_t symbol_id=py_find_symbol(py_keywords,text,symbol_len);
+                            if (symbol_id!=-1)
+                            {
+                                //Keyword
+
+                                //Debugging
+                                {
+                                    debug("KEYWORD: ");
+                                    for (int i=0;i<symbol_len;i++) debug("%c",text[i]);
+                                    debug("\n");
+                                }
+                                //Debugging
+
+                            }
+                            else
+                            {
+                                //Not built-in function or keyword so must be variable or user-defined function
+                                //Push index in source to name for now and decide if local or global at end
+                                //Note, two passes are necessary here since a variable read or passed to a function
+                                //may be local or global. Writing to the variable if it wasn't declared with global
+                                //means it's local whether the write occurs in source before or after the read
+
+                                //Find var if it exists on stack and create if it doesn't exist
+
+                                //TODO: test
+
+                                obj_ptr=py_var_stack(text,symbol_len);
+                            }
+                            
+                        }
                         break;
                     case SYMBOL_HEX:
                         num_ptr+=2;

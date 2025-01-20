@@ -18,25 +18,28 @@
     #define PY_MEM_SP_OFFSET                (uint16_t)sizeof(uint16_t)
     #define PY_MEM_SP_COUNT                 (PY_MEM_SP+PY_MEM_SP_OFFSET)
     #define PY_MEM_SP_COUNT_OFFSET          (uint16_t)sizeof(uint8_t)
-    #define PY_MEM_HEAP_PTR                 (PY_MEM_SP_COUNT+PY_MEM_SP_COUNT_OFFSET)
+    #define PY_MEM_SOURCE_PTR               (PY_MEM_SP_COUNT+PY_MEM_SP_COUNT_OFFSET)
+    #define PY_MEM_SOURCE_PTR_OFFSET        (uint16_t)sizeof(const char *) 
+    #define PY_MEM_HEAP_PTR                 (PY_MEM_SOURCE_PTR+PY_MEM_SP_SOURCE_OFFSET)
     #define PY_MEM_HEAP_PTR_OFFSET          (uint16_t)sizeof(uint16_t)
 
     //Heap starts after end of all other variables
     #define PY_MEM_HEAP_BEGIN       (PY_MEM_HEAP_PTR+PY_MEM_HEAP_PTR_OFFSET)
 
-    #define py_mem_size             *(uint16_t*)(py_settings.mem+PY_MEM_SIZE)
+    #define py_mem_size             *(uint16_t *)(py_settings.mem+PY_MEM_SIZE)
     #define py_error_func_ptr       *(void **)(py_settings.mem+PY_MEM_ERROR_FUNC_PTR)
     #define py_error_func           ((void (*)(uint8_t,uint16_t))(py_error_func_ptr))
     #define py_error_num            py_settings.mem[PY_MEM_ERROR_NUM] 
-    #define py_sp                   *(uint16_t*)(py_settings.mem+PY_MEM_SP)
+    #define py_sp                   *(uint16_t *)(py_settings.mem+PY_MEM_SP)
     #define py_sp_count             (py_settings.mem[PY_MEM_SP_COUNT])
     #define py_tos                  (py_settings.mem+py_sp)
     //Relative to beginning of memory not to beginning of heap!
-    #define py_heap_ptr             *(uint16_t*)(py_settings.mem+PY_MEM_HEAP_PTR)
+    #define py_heap_ptr             *(uint16_t *)(py_settings.mem+PY_MEM_HEAP_PTR)
     #define py_heap_current         (py_settings.mem+py_heap_ptr)
     //Absolute address of beginning of heap
     #define py_heap_begin           (py_settings.mem+PY_MEM_HEAP_BEGIN)
     #define py_free                 (py_sp-py_heap_ptr-(uint16_t)sizeof(uint16_t))
+    #define py_source_ptr           *(int *
 
     //Stack functionality
     //===================
@@ -63,27 +66,29 @@
     //Memory management
     //=================
     uint8_t *py_allocate(uint16_t size);
+    py_error_t py_append(uint8_t *obj, const void *data, uint16_t data_size);
 
 
     //Objects
     //=======
     enum ObjectTypes
     {
-        OBJECT_TEMP,        //Temp space for code executed outside of function
+        OBJECT_CODE,        //Code for function or temporary for code outside function
         OBJECT_INT,
+        OBJECT_FLOAT,       //Not supported yet but go ahead and reserve ID
         OBJECT_STRING,
+        OBJECT_BOOL,
         OBJECT_VAR,    
-        OBJECT_FUNC,        //User-defined function
         OBJECT_BUILTIN,     //Functions defined by system (len, str, etc)
         OBJECT_LIST,
         OBJECT_DICT,
         OBJECT_TUPLE,
-        OBJECT_ITER,        //Iterator - range, list, etc for for loop
-        OBJECT_BOOL,
-        OBJECT_NONE,        //Python None
-        OBJECT_FREE,        //Free to garbage collect
-        OBJECT_FLOAT,       //Not supported yet but go ahead and reserve ID
-        OBJECT_SET          //Not supported yet but go ahead and reserve ID
+        OBJECT_SET,
+        OBJECT_RANGE,
+        OBJECT_NONE,            //Python None
+        OBJECT_FREE,            //Free to garbage collect
+        OBJECT_GLOBAL_VALUES,   //Global variable values
+        OBJECT_GLOBAL_NAMES,    //Global variable names
     };
 
 
@@ -157,9 +162,36 @@
         TOKEN_NONE_OBJ,
         TOKEN_SLICE_INDEX,
         TOKEN_INDEX,
+        TOKEN_BUILTIN_FUNC,
         //Tokens starting here are for storing things like variable names on stack during compilation
-        TOKEN_VAR_NAME,
+        TOKEN_VAR_INFO,
 
+    };
+
+
+    //Built-in function IDs
+    enum FunctionTypes
+    {
+        FUNC_ABS,
+        FUNC_BIN,
+        FUNC_CHR,
+        FUNC_DICT,
+        FUNC_DIVMOD,
+        FUNC_HEX,
+        FUNC_INPUT,
+        FUNC_INT,
+        FUNC_LEN,
+        FUNC_LIST,
+        FUNC_MAX,
+        FUNC_MIN,
+        FUNC_OCT,
+        FUNC_ORD,
+        FUNC_PRINT,
+        FUNC_RANGE,
+        FUNC_SET,
+        FUNC_SORTED,
+        FUNC_STR,
+        FUNC_TUPLE, 
     };
 
     //Execution

@@ -15,7 +15,6 @@
 
 /*TODO:
 - lots more comments
-- some uint functions return -1
 - error_handler can return code to continue executing?
 - check all pub and priv headers needed
 - if py_error_num no longer visible publically, why even record?
@@ -26,13 +25,7 @@
 - address all TODOs
 - double check ; works as expected
 - check memory passed in meets minimum
-- {5,2,2} is set {2,5} not dict
 - 6.10 - chaining ie a < b < c
-- add keywords
-  - list
-  - try/except?
-  - add line and char number as args to error_handler
-  - import? not for msp430
 - StackItem should just be pointer not struct
   - bit in pointer shows if int
     - (x<<1)>>1 extends sign!
@@ -51,32 +44,27 @@
       - wastes 2 bytes on MSP430
 - x="a""b" works in python
 - allocate and all other functions that can set error have error checking on return?
+  - smallest but slowest is to check error at beginning of function
 - track lines for errors instead of characters since characters not very accurate
+  - move source line num for errors to global obj so functions dont need to pass line num in case callee errors 
 - if space, bytecode for multiple values of one type for lists
-- move source line num for errors to global obj so functions dont need to pass line num in case callee errors 
 - double check optimizer on msp430 resolves py_sp etc defines. if not, buffer value before loop.
   - ie py_peek_stack
 - added exception to state LUT - need more syntax checks now?
   - already checking for 2+3) so what else?
 - two bytecodes for tuple token depending on 8 or 16 bit arg count?
 - more logical to change some enums to #define?
-- some syntax errors are PY_ERROR_INPUT and some PY_ERROR_SYNTAX. should be uniform.
+- some syntax errors are PY_ERROR_INPUT and some PY_ERROR_SYNTAX
 - code for processing ] } ) is huge - convert to table and compare size
-- py_execute - combine stack_buffer and append_data?
-
-
-IMPORTANT:
-- keeping a list is not great but need it for globals
-  - def foo():return x
-      - enough to know this is expected to be a global if not referenced locally yet
-  - separate ref count in list of globals to keep list small
-    - if no more refs, delete from list and garbage collect
+- #defines in core.h bigger than struct?
+  - no need to declare global struct and waste memory. just case to struct pointer
 
 CURRENTLY
 - variables
   - assignments
-- keywords
 - . notation
+- py_var_stack
+  - finish conversion to struct pointer for py_settings
 */
 
 void test_error_handler(uint8_t e, uint16_t line_number)
