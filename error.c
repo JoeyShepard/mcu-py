@@ -8,16 +8,15 @@
 
 uint8_t py_error_set(uint8_t error_num, uint16_t line_number)
 {
-    py_error_num=error_num;
+    py->error_num=error_num;
 
     if (error_num!=PY_ERROR_NONE)
     {
-        if (py_error_func_ptr!=NULL)
+        if (py->error_func!=NULL)
         {
-            py_error_func(py_error_num, line_number);
+            py->error_func(error_num, line_number);
         }
     }
-
     return error_num;
 }
 

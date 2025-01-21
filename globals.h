@@ -1,18 +1,12 @@
 #include <stdbool.h>
 #include <stdint.h>
+#include "core.h"
 #include "globals_public.h"
 
 #ifndef __GUARD_MCU_PY_GLOBALS_PRIVATE
     #define __GUARD_MCU_PY_GLOBALS_PRIVATE
 
-    //structs
-    struct py_settings_struct
-    {
-        bool initialized; //Global so initialized to 0
-        uint8_t *mem;
-    };
-    
-    //Globals
-    extern struct py_settings_struct py_settings;
+    extern bool py_initialized; //Global so initialized to 0
+    extern struct py_struct *py;
 
 #endif

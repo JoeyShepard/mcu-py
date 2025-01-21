@@ -1,4 +1,4 @@
 #include "globals.h"
 
-//Globals
-struct py_settings_struct py_settings;
+bool py_initialized;
+struct py_struct *py;

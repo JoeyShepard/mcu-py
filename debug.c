@@ -372,15 +372,15 @@ int debug_reset_log()
 
 int debug_stack()
 {
-    debug("Stack: %d bytes\n",py_mem_size-py_sp);
-    if (py_sp_count>0)
+    debug("Stack: %d bytes\n",(uint8_t *)py-(py->mem_size)-(py->sp));
+    if (py->sp_count>0)
     {
-        uint16_t count=py_sp_count;
-        uint8_t *ptr=py_tos;
+        uint16_t count=py->sp_count;
+        uint8_t *ptr=py->sp;
         while(count>0)
         {
             uint8_t offset=0;
-            debug(" %.2d: %.2X",py_sp_count-count,*ptr);
+            debug(" %.2d: %.2X",py->sp_count-count,*ptr);
             switch (*ptr)
             {
                 case TOKEN_LPAREN:

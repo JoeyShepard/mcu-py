@@ -58,13 +58,14 @@
 - code for processing ] } ) is huge - convert to table and compare size
 - #defines in core.h bigger than struct?
   - no need to declare global struct and waste memory. just case to struct pointer
+- redundant to have 0 at end of heap linked list and heap_ptr
 
 CURRENTLY
 - variables
   - assignments
 - . notation
 - py_var_stack
-  - finish conversion to struct pointer for py_settings
+- top level tuples
 */
 
 void test_error_handler(uint8_t e, uint16_t line_number)

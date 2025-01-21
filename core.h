@@ -4,42 +4,19 @@
 #ifndef __GUARD_MCU_PY_CORE_PRIVATE
     #define __GUARD_MCU_PY_CORE_PRIVATE
    
-    //Aliases into allocated memory
-    //=============================
-    //(values not exposed to user can be stored in allocated memory)
-    //Better to store there so allocated memory can be reused by C
-    #define PY_MEM_SIZE                     0                                               
-    #define PY_MEM_SIZE_OFFSET              (uint16_t)sizeof(uint16_t)
-    #define PY_MEM_ERROR_FUNC_PTR           (PY_MEM_SIZE+PY_MEM_SIZE_OFFSET)
-    #define PY_MEM_ERROR_FUNC_PTR_OFFSET    (uint16_t)sizeof(void *)
-    #define PY_MEM_ERROR_NUM                (PY_MEM_ERROR_FUNC_PTR+PY_MEM_ERROR_FUNC_PTR_OFFSET)
-    #define PY_MEM_ERROR_NUM_OFFSET         (uint16_t)sizeof(uint8_t)
-    #define PY_MEM_SP                       (PY_MEM_ERROR_NUM+PY_MEM_ERROR_NUM_OFFSET)
-    #define PY_MEM_SP_OFFSET                (uint16_t)sizeof(uint16_t)
-    #define PY_MEM_SP_COUNT                 (PY_MEM_SP+PY_MEM_SP_OFFSET)
-    #define PY_MEM_SP_COUNT_OFFSET          (uint16_t)sizeof(uint8_t)
-    #define PY_MEM_SOURCE_PTR               (PY_MEM_SP_COUNT+PY_MEM_SP_COUNT_OFFSET)
-    #define PY_MEM_SOURCE_PTR_OFFSET        (uint16_t)sizeof(const char *) 
-    #define PY_MEM_HEAP_PTR                 (PY_MEM_SOURCE_PTR+PY_MEM_SP_SOURCE_OFFSET)
-    #define PY_MEM_HEAP_PTR_OFFSET          (uint16_t)sizeof(uint16_t)
-
-    //Heap starts after end of all other variables
-    #define PY_MEM_HEAP_BEGIN       (PY_MEM_HEAP_PTR+PY_MEM_HEAP_PTR_OFFSET)
-
-    #define py_mem_size             *(uint16_t *)(py_settings.mem+PY_MEM_SIZE)
-    #define py_error_func_ptr       *(void **)(py_settings.mem+PY_MEM_ERROR_FUNC_PTR)
-    #define py_error_func           ((void (*)(uint8_t,uint16_t))(py_error_func_ptr))
-    #define py_error_num            py_settings.mem[PY_MEM_ERROR_NUM] 
-    #define py_sp                   *(uint16_t *)(py_settings.mem+PY_MEM_SP)
-    #define py_sp_count             (py_settings.mem[PY_MEM_SP_COUNT])
-    #define py_tos                  (py_settings.mem+py_sp)
-    //Relative to beginning of memory not to beginning of heap!
-    #define py_heap_ptr             *(uint16_t *)(py_settings.mem+PY_MEM_HEAP_PTR)
-    #define py_heap_current         (py_settings.mem+py_heap_ptr)
-    //Absolute address of beginning of heap
-    #define py_heap_begin           (py_settings.mem+PY_MEM_HEAP_BEGIN)
-    #define py_free                 (py_sp-py_heap_ptr-(uint16_t)sizeof(uint16_t))
-    #define py_source_ptr           *(int *
+    //Python settings
+    //===============
+    struct __attribute__((packed)) py_struct
+    {
+        uint16_t mem_size;
+        void (*error_func)(uint8_t,uint16_t);
+        uint8_t error_num;
+        uint8_t *sp;
+        uint16_t sp_count;
+        uint8_t *heap_ptr;
+        uint8_t *heap_begin;
+        const char *source;
+    };
 
     //Stack functionality
     //===================
@@ -67,6 +44,7 @@
     //=================
     uint8_t *py_allocate(uint16_t size);
     py_error_t py_append(uint8_t *obj, const void *data, uint16_t data_size);
+    uint16_t py_free();
 
 
     //Objects

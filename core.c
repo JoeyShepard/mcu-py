@@ -14,15 +14,16 @@ py_error_t py_init(uint8_t *mem, uint16_t size, void (*error_func)(uint8_t, uint
     //Make sure maximum symbol size defined in custom.h fits in one byte
     if (PY_MAX_SYMBOL_SIZE>=255) return PY_ERROR_MAX_SYMBOL_EXCEEDED;
 
-    py_settings.mem=mem;
-    py_settings.initialized=true;
+    py=(struct py_struct *)mem;
+    py_initialized=true;
 
-    py_mem_size=size;
-    py_error_func_ptr=error_func;
-    py_sp=size;
-    py_sp_count=0;
-    *(uint16_t*)py_heap_begin=0;  //Linked list
-    py_heap_ptr=PY_MEM_HEAP_BEGIN;
+    py->mem_size=size;
+    py->error_func=error_func;
+    py->sp=mem+size;
+    py->sp_count=0;
+    py->heap_begin=mem+sizeof(struct py_struct);
+    *(uint16_t*)py->heap_begin=0;  //Linked list
+    py->heap_ptr=py->heap_begin;
 
     //Add object to hold global variable values
     uint8_t *globals=py_allocate(0);
@@ -42,11 +43,11 @@ py_error_t py_init(uint8_t *mem, uint16_t size, void (*error_func)(uint8_t, uint
 //=====
 py_error_t py_push(struct StackItem item)
 {
-    if (sizeof(struct StackItem)>py_free) return py_error_set(PY_ERROR_OUT_OF_MEM,0);
+    if (sizeof(struct StackItem)>py_free()) return py_error_set(PY_ERROR_OUT_OF_MEM,0);
 
-    py_sp-=sizeof(struct StackItem);
-    *(struct StackItem*)py_tos=item;
-    py_sp_count++;
+    py->sp-=sizeof(struct StackItem);
+    *(struct StackItem*)py->sp=item;
+    py->sp_count++;
 
     return PY_ERROR_NONE;
 }
@@ -57,36 +58,40 @@ py_error_t py_push(struct StackItem item)
 uint8_t *py_allocate(uint16_t size)
 {
     size+=sizeof(uint16_t);     //Two extra bytes for offset to next item
-    if (size>py_free)
+    if (size>py_free())
     {
         py_error_set(PY_ERROR_OUT_OF_MEM,0);
         return 0;
     }
-    *(uint16_t*)(py_heap_current)=size;
-    uint8_t *ret_val=py_heap_current;
-    py_heap_ptr+=size;
-    *(uint16_t*)(py_heap_current)=0;
+    *(uint16_t*)(py->heap_ptr)=size;
+    uint8_t *ret_val=py->heap_ptr;
+    py->heap_ptr+=size;
+    *(uint16_t*)(py->heap_ptr)=0;
     return ret_val;
 }
 
 py_error_t py_append(uint8_t *obj, const void *data, uint16_t size)
 {
     //No need to add two bytes to size since end of list marker already exists
-    if (size>py_free)
+    if (size>py_free())
     {
         return py_error_set(PY_ERROR_OUT_OF_MEM,0);
     }
-    uint8_t *data_dest=py_heap_current;
+    uint8_t *data_dest=py->heap_ptr;
     for (uint16_t i=0;i<size;i++)
     {
-        *data_dest=*(uint8_t *)data;
-        data++;
-        data_dest++;
+        data_dest[i]=((uint8_t *)data)[i];
     }
     *(uint16_t *)(obj)+=size;
-    py_heap_ptr+=size;
-    *(uint16_t*)(py_heap_current)=0;
+    py->heap_ptr+=size;
+    *(uint16_t*)(py->heap_ptr)=0;
     return PY_ERROR_NONE;
+}
+
+uint16_t py_free()
+{
+    //Extra sizeof(uint16_t) for end address of heap linked list
+    return (py->sp)-(py->heap_ptr)-sizeof(uint16_t);
 }
 
 

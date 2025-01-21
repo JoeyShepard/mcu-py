@@ -225,14 +225,14 @@ static uint8_t py_token_size(uint8_t token)
 
 static py_error_t py_custom_push(const void *data, uint16_t data_size)
 {
-    if (py_free<data_size) return py_error_set(PY_ERROR_OUT_OF_MEM,0);
+    if (py_free()<data_size) return py_error_set(PY_ERROR_OUT_OF_MEM,0);
 
-    py_sp-=data_size;
+    py->sp-=data_size;
     for (uint16_t i=0;i<data_size;i++)
     {
-        *(py_tos+i)=*(uint8_t *)(data+i);
+        *(py->sp+i)=*(uint8_t *)(data+i);
     }
-    py_sp_count++;
+    py->sp_count++;
 
     return PY_ERROR_NONE;
 }
@@ -265,7 +265,7 @@ static uint8_t *py_peek_stack(uint8_t *obj, uint8_t pop_class)
     if (obj==NULL)
     {
         //Haven't started searching yet so start at top of stack
-        new_obj=py_tos;
+        new_obj=py->sp;
     }
     else new_obj=obj;
 
@@ -273,7 +273,7 @@ static uint8_t *py_peek_stack(uint8_t *obj, uint8_t pop_class)
     while (1)
     {
         //Pointer reached end of stack - done searching
-        if (new_obj==py_settings.mem+py_mem_size) return NULL;
+        if (new_obj==(uint8_t*)py+(py->mem_size)) return NULL;
 
         //TODO: use token ranges instead of switch? look up table?
         //Return address if token correct type
@@ -381,9 +381,12 @@ static uint8_t *py_var_stack(const char *text, uint8_t symbol_len)
             debug_cstr(text,symbol_len);
             debug(" == ");
             //debug_cstr(py_settings.mem+(*(uint16_t*)(obj_ptr+VAR_OFFSET)),obj_ptr[VAR_SIZE]);
-            debug("?\n")
+            debug("?\n");
             debug(" - %d %d\n",obj_ptr[VAR_SIZE],(*(uint16_t*)(obj_ptr+VAR_OFFSET)));
+            
+            //TODO:
 
+            /*
             //Variable found - check if name matches
             if (py_cstrcmp(text,symbol_len,py_settings.mem+obj_ptr[VAR_SIZE],obj_ptr[VAR_SIZE]))
             {
@@ -393,6 +396,7 @@ static uint8_t *py_var_stack(const char *text, uint8_t symbol_len)
                 return obj_ptr;
             }
             else debug("Doesn't match\n");
+            */
         }
     }
 
@@ -414,12 +418,12 @@ static uint8_t *py_var_stack(const char *text, uint8_t symbol_len)
 static uint8_t *py_remove_stack(uint8_t *obj)
 {
     uint16_t obj_size=py_token_size(*obj)+1;
-    for (uint8_t *copy_ptr=obj-1;copy_ptr>=py_tos;copy_ptr--)
+    for (uint8_t *copy_ptr=obj-1;copy_ptr>=py->sp;copy_ptr--)
     {
         *(copy_ptr+obj_size)=*copy_ptr; 
     }
-    py_sp_count--;
-    py_sp+=obj_size;
+    py->sp_count--;
+    py->sp+=obj_size;
     return obj+obj_size;
 }
 
@@ -446,7 +450,7 @@ static uint8_t py_find_precedence(uint8_t token)
 py_error_t py_execute(const char *text)
 {
     //Can't set error_num if uninitialized since stored in passed-in memory so return error code but don't set py_error_num
-    if (!py_settings.initialized) return PY_ERROR_UNINITIALIZED;
+    if (!py_initialized) return PY_ERROR_UNINITIALIZED;
 
     //Local variables reset for each line
     struct SymbolType
@@ -471,7 +475,7 @@ py_error_t py_execute(const char *text)
     //      3 - 8 bits for token and 16 bits for extra data for enum OpeningFlags for ( [ {
     uint8_t stack_buffer[3];
 
-    
+    /*    
     //Debugging
     {
         uint8_t *debug_ptr=py_peek_stack(NULL,POP_VAR_INFO);
@@ -495,7 +499,7 @@ py_error_t py_execute(const char *text)
         exit(1);
     }
     //Debugging
-
+    */
 
 
     do
@@ -738,7 +742,7 @@ py_error_t py_execute(const char *text)
                                 //Debugging
                                 {
                                     debug("KEYWORD: ");
-                                    for (int i=0;i<symbol_len;i++) debug("%c",text[i]);
+                                    debug_cstr(text,symbol_len);
                                     debug("\n");
                                 }
                                 //Debugging
@@ -756,9 +760,8 @@ py_error_t py_execute(const char *text)
 
                                 //TODO: test
 
-                                obj_ptr=py_var_stack(text,symbol_len);
+                                //obj_ptr=py_var_stack(text,symbol_len);
                             }
-                            
                         }
                         break;
                     case SYMBOL_HEX:
@@ -851,7 +854,7 @@ py_error_t py_execute(const char *text)
                             {
                                 if (py_custom_pop(stack_buffer,POP_CLOSING_FOUND)==false)
                                 {
-                                    //No matching bracket found! ie 1+2)
+                                    //Error - no matching bracket found! ie 1+2)
                                     return py_error_set(PY_ERROR_SYNTAX,line_number);
                                 }
                                 stack_token_precedence=py_find_precedence(stack_buffer[0]);
@@ -867,9 +870,8 @@ py_error_t py_execute(const char *text)
                                         //Found matching ( [ { on stack - figure out object type and element count
                                         uint16_t element_data=*(uint16_t *)(stack_buffer+1);
                                         uint16_t element_count=element_data&FLAG_COUNT_MASK;
-
-                                        //Preset element count since used by most options below
-                                        *(uint16_t *)(stack_buffer+1)=element_count;
+                                        
+                                        //debug("%X %X\n",element_data,element_count);
 
                                         if (stack_buffer[0]==TOKEN_LPAREN)
                                         {
@@ -886,6 +888,9 @@ py_error_t py_execute(const char *text)
                                                 //Empty element at end like (1,) so decrease count
                                                 element_count--;
                                             }
+                                            
+                                            //Preset element count since used by most options below
+                                            *(uint16_t *)(stack_buffer+1)=element_count;
 
                                             if (element_data&FLAG_FUNC_DEREF)
                                             {
@@ -1008,6 +1013,7 @@ py_error_t py_execute(const char *text)
                                             //Element count used for dict and set below
                                             *(uint16_t *)(stack_buffer+1)=element_count;
                                             
+                                            //Determine if set or dictionary
                                             uint16_t temp_flags=element_data&FLAG_DICT_SET_MASK;
                                             if (temp_flags==PARSE_BEGIN)
                                             {
@@ -1197,7 +1203,7 @@ py_error_t py_execute(const char *text)
                         else
                         {
                             //All other operators - no special handling
-                            if (py_sp_count!=0)
+                            if (py->sp_count!=0)
                             {
                                 //Operator associativity
                                 switch (input_token)
