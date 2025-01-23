@@ -15,7 +15,6 @@
         uint16_t sp_count;
         uint8_t *heap_ptr;
         uint8_t *heap_begin;
-        const char *source;
     };
 
     //Stack functionality
@@ -141,6 +140,8 @@
         TOKEN_SLICE_INDEX,
         TOKEN_INDEX,
         TOKEN_BUILTIN_FUNC,
+        TOKEN_GLOBAL,
+        TOKEN_LOCAL,
         //Tokens starting here are for storing things like variable names on stack during compilation
         TOKEN_VAR_INFO,
 

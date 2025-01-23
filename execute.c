@@ -19,10 +19,11 @@ static uint8_t py_lookup_op(char op);
 static uint8_t py_next_symbol(const char **text, uint16_t *len);
 static int8_t py_find_symbol(const char *list, const char *symbol_begin, uint8_t symbol_len);
 static uint8_t py_token_size(uint8_t token);
-static py_error_t py_custom_push(const void *data, uint16_t data_size);
+static py_error_t py_custom_push(const void *data, uint16_t data_size, uint16_t extra_size);
 static bool py_custom_pop(uint8_t *data, uint8_t pop_class);
 static uint8_t *py_peek_stack(uint8_t *obj, uint8_t pop_class);
 static uint8_t *py_var_stack(const char *text, uint8_t symbol_len);
+static uint8_t py_var_index(uint8_t *target_ptr);
 static uint8_t *py_remove_stack(uint8_t *obj);
 static uint8_t py_find_precedence(uint8_t token);
 
@@ -217,21 +218,25 @@ static uint8_t py_token_size(uint8_t token)
         case TOKEN_SET:
             return sizeof(uint16_t);
         case TOKEN_VAR_INFO:
-            return sizeof(uint8_t)+sizeof(uint8_t)+sizeof(uint16_t);
+            return PY_STACK_VAR_SIZE+sizeof(const char **)-1;
         default:
             return 0;
     }
 }
 
-static py_error_t py_custom_push(const void *data, uint16_t data_size)
+static py_error_t py_custom_push(const void *data, uint16_t data_size, uint16_t extra_size)
 {
-    if (py_free()<data_size) return py_error_set(PY_ERROR_OUT_OF_MEM,0);
+    if (py_free()<(data_size+extra_size)) return py_error_set(PY_ERROR_OUT_OF_MEM,0);
+    
+    //Decrease stack pointer
+    py->sp-=(data_size+extra_size);
 
-    py->sp-=data_size;
     for (uint16_t i=0;i<data_size;i++)
     {
         *(py->sp+i)=*(uint8_t *)(data+i);
     }
+
+    //Increase count of items on stack
     py->sp_count++;
 
     return PY_ERROR_NONE;
@@ -274,6 +279,10 @@ static uint8_t *py_peek_stack(uint8_t *obj, uint8_t pop_class)
     {
         //Pointer reached end of stack - done searching
         if (new_obj==(uint8_t*)py+(py->mem_size)) return NULL;
+
+        {
+            //debug("new_obj: 
+        }
 
         //TODO: use token ranges instead of switch? look up table?
         //Return address if token correct type
@@ -360,6 +369,7 @@ static uint8_t *py_peek_stack(uint8_t *obj, uint8_t pop_class)
     }
 }
 
+//TODO: only called once? inline?
 static uint8_t *py_var_stack(const char *text, uint8_t symbol_len)
 {
     uint8_t *obj_ptr=NULL;    
@@ -370,49 +380,51 @@ static uint8_t *py_var_stack(const char *text, uint8_t symbol_len)
         if (obj_ptr==NULL)
         {
             //No more variable objects on stack - create new below
-
-            debug("No var found\n");
-
             break;
         }
         else
         {
-            debug("Testing: ");
-            debug_cstr(text,symbol_len);
-            debug(" == ");
-            //debug_cstr(py_settings.mem+(*(uint16_t*)(obj_ptr+VAR_OFFSET)),obj_ptr[VAR_SIZE]);
-            debug("?\n");
-            debug(" - %d %d\n",obj_ptr[VAR_SIZE],(*(uint16_t*)(obj_ptr+VAR_OFFSET)));
-            
-            //TODO:
-
-            /*
             //Variable found - check if name matches
-            if (py_cstrcmp(text,symbol_len,py_settings.mem+obj_ptr[VAR_SIZE],obj_ptr[VAR_SIZE]))
+            if (py_cstrcmp(text,symbol_len,*(const char **)(obj_ptr+VAR_NAME),obj_ptr[VAR_SIZE]))
             {
-                debug("Matches\n");
-
-                //Name matches - return pointer
+                //Name matches - record return pointer
                 return obj_ptr;
             }
-            else debug("Doesn't match\n");
-            */
         }
     }
 
-    debug("Not found - creating new var\n");
-
     //Variable not found - create new
-    //TODO: not done! need pointer to original source to calculate offset
-    /*
+
+    //Reserve 3 bytes for token, flags, and size of name plus extra space for pointer to word in source
     uint8_t stack_buffer[PY_STACK_VAR_SIZE];
     stack_buffer[VAR_TOKEN]=TOKEN_VAR_INFO;
     stack_buffer[VAR_FLAGS]=0;
     stack_buffer[VAR_SIZE]=symbol_len;
-    *(uint16_t *)(stack_buffer+VAR_OFFSET)=(((uint8_t*)text)-py_settings.mem);
-    py_custom_push(stack_buffer,PY_STACK_VAR_SIZE);
-    return py_peek_stack(NULL,POP_VAR_INFO);
-    */
+    py_custom_push(stack_buffer,PY_STACK_VAR_SIZE,sizeof(text));
+
+    //Fill in pointer to word in source
+    obj_ptr=py_peek_stack(NULL,POP_VAR_INFO);
+    *((const char **)(obj_ptr+VAR_NAME))=text;
+
+    //Return pointer to variable info which is now on top of stack
+    return obj_ptr;
+}
+
+static uint8_t py_var_index(uint8_t *target_ptr)
+{
+    uint8_t *obj_ptr=NULL;    
+    uint8_t ret_val=0;
+    while(1)
+    {
+        //Check if variable exists already
+        obj_ptr=py_peek_stack(obj_ptr,POP_VAR_INFO);
+        if (obj_ptr==NULL)
+        {
+            return ret_val;
+        }
+        else if (obj_ptr==target_ptr) ret_val=0;
+        else ret_val++;
+    }
 }
 
 static uint8_t *py_remove_stack(uint8_t *obj)
@@ -452,6 +464,40 @@ py_error_t py_execute(const char *text)
     //Can't set error_num if uninitialized since stored in passed-in memory so return error code but don't set py_error_num
     if (!py_initialized) return PY_ERROR_UNINITIALIZED;
 
+    /*
+    //Debugging
+    {
+        uint8_t *debug_ptr=py_peek_stack(NULL,POP_VAR_INFO);
+        debug("No vars. Should be null: %p\n",debug_ptr);
+
+        debug_ptr=py_var_stack("abc",3);
+        debug("abc: %p\n",debug_ptr);
+        debug_ptr=py_peek_stack(NULL,POP_VAR_INFO);
+        debug("abc: %p\n",debug_ptr);
+        uint8_t var_index=py_var_index(debug_ptr);
+        debug("abc rank: %d\n",var_index);
+        
+        debug_ptr=py_var_stack("foo",3);
+        debug("foo: %p\n",debug_ptr);
+        debug_ptr=py_peek_stack(NULL,POP_VAR_INFO);
+        debug("foo: %p\n",debug_ptr);
+        var_index=py_var_index(debug_ptr);
+        debug("foo rank: %d\n",var_index);
+
+        debug_ptr=py_peek_stack(NULL,POP_VAR_INFO);
+        debug_ptr=py_peek_stack(debug_ptr,POP_VAR_INFO);
+        debug("abc: %p\n",debug_ptr);
+        debug_ptr=py_var_stack("abc",3);
+        debug("abc: %p\n",debug_ptr);
+        var_index=py_var_index(debug_ptr);
+        debug("abc rank: %d\n",var_index);
+
+
+        exit(1);
+    }
+    //Debugging
+    */
+
     //Local variables reset for each line
     struct SymbolType
     {
@@ -474,33 +520,6 @@ py_error_t py_execute(const char *text)
     //TODO: explain size. should be big enough for biggest possible.
     //      3 - 8 bits for token and 16 bits for extra data for enum OpeningFlags for ( [ {
     uint8_t stack_buffer[3];
-
-    /*    
-    //Debugging
-    {
-        uint8_t *debug_ptr=py_peek_stack(NULL,POP_VAR_INFO);
-        printf("No cars. Should be null: %p\n",debug_ptr);
-
-        debug_ptr=py_var_stack("abc",3);
-        printf("abc: %p\n",debug_ptr);
-        debug_ptr=py_peek_stack(NULL,POP_VAR_INFO);
-        printf("abc: %p\n",debug_ptr);
-
-        debug_ptr=py_var_stack("foo",3);
-        printf("foo: %p\n",debug_ptr);
-        debug_ptr=py_peek_stack(NULL,POP_VAR_INFO);
-        printf("foo: %p\n",debug_ptr);
-
-        debug_ptr=py_peek_stack(NULL,POP_VAR_INFO);
-        debug_ptr=py_peek_stack(debug_ptr,POP_VAR_INFO);
-        printf("abc: %p\n",debug_ptr);
-
-
-        exit(1);
-    }
-    //Debugging
-    */
-
 
     do
     {
@@ -751,16 +770,19 @@ py_error_t py_execute(const char *text)
                             else
                             {
                                 //Not built-in function or keyword so must be variable or user-defined function
-                                //Push index in source to name for now and decide if local or global at end
+                                //Push pointer in source to name for now and decide if local or global at end
                                 //Note, two passes are necessary here since a variable read or passed to a function
                                 //may be local or global. Writing to the variable if it wasn't declared with global
-                                //means it's local whether the write occurs in source before or after the read
+                                //means it's local whether the write occurs in source before or after the read.
 
-                                //Find var if it exists on stack and create if it doesn't exist
+                                //Find var if it exists on stack and create it if it doesn't exist
+                                obj_ptr=py_var_stack(text,symbol_len);
 
-                                //TODO: test
-
-                                //obj_ptr=py_var_stack(text,symbol_len);
+                                //Generate bytecode for global variable by default and record index to var info on stack.
+                                //After current function or top-level code is processed, do second pass to change globals
+                                //to locals as needed and change indexes from pointing to var info on stack to pointing to
+                                //locals or globals at runtime.
+                                uint8_t var_index=py_var_index(obj_ptr);
                             }
                         }
                         break;
@@ -843,7 +865,7 @@ py_error_t py_execute(const char *text)
                                 //No value preceding ( or [ so not function or list/dict indexing
                                 *(uint16_t *)(stack_buffer+1)=0;
                             }
-                            py_custom_push(stack_buffer,3);
+                            py_custom_push(stack_buffer,3,0);
                         }
                         else if (input_token_precedence==PREC_CLOSING)
                         {
@@ -1247,7 +1269,7 @@ py_error_t py_execute(const char *text)
                                     }
                                 }
                             }
-                            py_custom_push(&input_token,1);
+                            py_custom_push(&input_token,1,0);
                         }
                         break;
                 }   //switch for compiled values and operators processed by Shunting Yard

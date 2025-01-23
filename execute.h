@@ -12,7 +12,7 @@
     #define PY_CHAR_MASK        0xF         //Lower 4 bits of entry in py_state_chars is size of range
     #define PY_SYMBOL_MASK      0xF         //Lookup in py_state_symbols stored 4 bits each
     #define PY_FUNC_MAX_ARGS    255         //Limit so arg count fits in one byte
-    #define PY_STACK_VAR_SIZE   5           //Size on stack of var info during compilation. See enum VarFields below.
+    #define PY_STACK_VAR_SIZE   3           //Size on stack of var info during compilation (excluding name pointer.) See enum VarFields below.
    
     //Interpreter states
     #define STATE_ENTRY_SIZE    3           //Size in bytes of entry in py_state_table in tables.c
@@ -133,7 +133,7 @@
         VAR_TOKEN,              //1 byte
         VAR_FLAGS,              //1 byte
         VAR_SIZE,               //1 byte
-        VAR_OFFSET              //2 bytes
+        VAR_NAME                //sizeof(const char *) - large on x86 but small on systems were RAM is scarce
     };
 
 #endif

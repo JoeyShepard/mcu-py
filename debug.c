@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "core.h"
+#include "execute.h"
 #include "debug.h"
 #include "globals.h"
 
@@ -162,6 +163,8 @@ static const char *debug_token[]=
     "TOKEN_SLICE_INDEX",
     "TOKEN_INDEX",
     "TOKEN_BUILTIN_FUNC",
+    "TOKEN_GLOBAL",
+    "TOKEN_LOCAL",
     //Tokens starting here are for storing things like variable names on stack during compilation
     "TOKEN_VAR_INFO",
     //Don't remove! Marks last entry
@@ -372,7 +375,7 @@ int debug_reset_log()
 
 int debug_stack()
 {
-    debug("Stack: %d bytes\n",(uint8_t *)py-(py->mem_size)-(py->sp));
+    debug("Stack: %d bytes\n",(uint8_t *)py+(py->mem_size)-(py->sp));
     if (py->sp_count>0)
     {
         uint16_t count=py->sp_count;
@@ -388,13 +391,15 @@ int debug_stack()
                 case TOKEN_LCBRACKET:
                     offset=2;
                     break;
+                case TOKEN_VAR_INFO:
+                    offset=PY_STACK_VAR_SIZE+sizeof(const char *)-1;
             }
             for (int i=0;i<offset;i++)
             {
                 debug(" %.2X",*(ptr+i+1));
             }
 
-            uint8_t padding=16;
+            uint8_t padding=40;
             for (int i=0;i<padding-7-offset*3;i++) debug(" ");
             debug(" %s\n",debug_value("token",*ptr));
             
