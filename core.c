@@ -270,6 +270,15 @@ py_error_t py_run(uint8_t *bytecode)
             case TOKEN_BUILTIN_FUNC:
                 debug("%s",debug_value("builtin",*bytecode));
                 bytecode++;
+                break;
+            case TOKEN_GLOBAL:
+                debug("%d",*bytecode);
+                bytecode++;
+                break;
+            case TOKEN_LOCAL:
+                debug("%d",*bytecode);
+                bytecode++;
+                break;
 
                 //TODO:
                 //put pointer to builtin in stack item if it fits

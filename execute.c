@@ -783,6 +783,9 @@ py_error_t py_execute(const char *text)
                                 //to locals as needed and change indexes from pointing to var info on stack to pointing to
                                 //locals or globals at runtime.
                                 uint8_t var_index=py_var_index(obj_ptr);
+                                stack_buffer[0]=TOKEN_GLOBAL;
+                                stack_buffer[1]=var_index;
+                                py_append(compile_target,stack_buffer,2);
                             }
                         }
                         break;

@@ -82,7 +82,7 @@ const uint8_t py_state_chars[]={
 (INPUT_OP<<4)|2,              //37-38
 (INPUT_QUOTE<<4)|1,           //39
 (INPUT_OP<<4)|6,              //40-45
-(INPUT_ERROR<<4)|1,           //46
+(INPUT_G_Z_<<4)|1,            //46
 (INPUT_OP<<4)|1,              //47
 (INPUT_ZERO<<4)|1,            //48
 (INPUT_NUM<<4)|9,             //49-57
@@ -181,5 +181,4 @@ const uint8_t py_state_table[]=
 1,(STATE_ERROR<<4)|STATE_NOT,(STATE_NONE<<4)|STATE_VAL,                         //TOKEN_BOOL_NOT
 2,(STATE_REQ<<4)|STATE_ERROR,(STATE_NONE<<4)|STATE_VAL,                         //TOKEN_BOOL_AND
 };
-
 

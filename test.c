@@ -59,12 +59,12 @@
 - #defines in core.h bigger than struct?
   - no need to declare global struct and waste memory. just case to struct pointer
 - redundant to have 0 at end of heap linked list and heap_ptr
+- sizes shows 56 bytes for table.c in data section
 
 CURRENTLY
 - variables
   - assignments
 - . notation
-- py_var_stack
 - top level tuples
 */
 
