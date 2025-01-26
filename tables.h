@@ -7,7 +7,7 @@
     #define PY_SYMBOL_ROW_SIZE              5   //Size of row in py_symbol_state
     #define PY_OP_LOOKUP_KEYS_LONG_COUNT    4   //Number of elements in py_op_lookup_keys_long
     #define PY_OP_COMBOS_SIZE               3   //Size of row in py_op_combos
-    #define PY_OP_COMBOS_COUNT              19  //Number of elements in py_op_combos
+    #define PY_OP_COMBOS_COUNT              18  //Number of elements in py_op_combos
 
     //Globals
     extern const char *py_functions;

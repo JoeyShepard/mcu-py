@@ -218,6 +218,7 @@ static uint8_t py_token_size(uint8_t token)
         case TOKEN_SET:
             return sizeof(uint16_t);
         case TOKEN_VAR_INFO:
+            //-1 since PY_STACK_VAR_SIZE accounts for token
             return PY_STACK_VAR_SIZE+sizeof(const char **)-1;
         default:
             return 0;
@@ -448,7 +449,10 @@ static uint8_t py_find_precedence(uint8_t token)
     while(1)
     {
         token_max+=*table_ptr;
-        if (token<=token_max) return precedence;
+        if (token<=token_max)
+        {
+            return precedence;
+        }
         else
         {
             table_ptr++;
@@ -456,7 +460,6 @@ static uint8_t py_find_precedence(uint8_t token)
         }
     }
 }
-
 
 //Execute Python source passed in as a string
 py_error_t py_execute(const char *text)
@@ -701,7 +704,14 @@ py_error_t py_execute(const char *text)
                         }
                         break;
                 }
-             
+
+                //Account for period as attribute operator - anything other than alpha symbol is error
+                if ((exec_flags&FLAG_ATTRIBUTE)&&
+                    (!((input_symbol==SYMBOL_ALPHA)||(input_symbol==SYMBOL_SPACE))))
+                {
+                    return py_error_set(PY_ERROR_SYNTAX,0);
+                }
+
                 //Values ready to be compiled, operators ready to be processed by Shunting Yard
                 int32_t num=0;
                 const char *num_ptr=text;
@@ -732,6 +742,20 @@ py_error_t py_execute(const char *text)
                             //Compile operator
                             py_append(compile_target,stack_buffer,1);
                         }
+
+                        //Check if top level is a tuple is 1,2 rather than (1,2)
+                        if (top_comma_count>0)
+                        {
+                            if (exec_flags&FLAG_COMMA_LAST)
+                            {
+                                //Tuple with empty argument like 1,
+                                top_comma_count--;
+                            }
+                            stack_buffer[0]=TOKEN_TUPLE;
+                            *(uint16_t*)(stack_buffer+1)=top_comma_count+1;
+                            py_append(compile_target,stack_buffer,3);
+                        }
+
                         if (input_symbol==SYMBOL_END_ALL)
                         {
                             //Compile return token since done processing
@@ -741,51 +765,68 @@ py_error_t py_execute(const char *text)
                         }
                         break;
                     case SYMBOL_ALPHA:
-                        //Check if alpha symbol is built-in Python function
-                        int8_t symbol_id=py_find_symbol(py_functions,text,symbol_len);
-                        if (symbol_id!=-1)
+                        if (exec_flags&FLAG_ATTRIBUTE)
                         {
-                            //Built-in function
-                            stack_buffer[0]=TOKEN_BUILTIN_FUNC;
-                            stack_buffer[1]=symbol_id;
+                            //Symbol is attribute following period
+                            //Copy name of symbol into bytecode - takes more space but simplifies interpeter
+                            //Could keep list of attribute names and assign index but then need to search
+                            //list of names for lookup and then adjust index if no more uses of that attribute
+                            //(which may be a different class using the same name) but then would also need
+                            //reference counter for each attribute name. Less complicated to copy name.
+                            stack_buffer[0]=TOKEN_ATTRIBUTE;
+                            stack_buffer[1]=symbol_len;
                             py_append(compile_target,stack_buffer,2);
+                            py_append(compile_target,text,symbol_len);
+                            exec_flags&=~FLAG_ATTRIBUTE;
                         }
                         else
                         {
-                            //Check if alpha symbol is keyword like break or def
-                            int8_t symbol_id=py_find_symbol(py_keywords,text,symbol_len);
+                            //Check if alpha symbol is built-in Python function
+                            int8_t symbol_id=py_find_symbol(py_functions,text,symbol_len);
                             if (symbol_id!=-1)
                             {
-                                //Keyword
-
-                                //Debugging
-                                {
-                                    debug("KEYWORD: ");
-                                    debug_cstr(text,symbol_len);
-                                    debug("\n");
-                                }
-                                //Debugging
-
+                                //Built-in function
+                                stack_buffer[0]=TOKEN_BUILTIN_FUNC;
+                                stack_buffer[1]=symbol_id;
+                                py_append(compile_target,stack_buffer,2);
                             }
                             else
                             {
-                                //Not built-in function or keyword so must be variable or user-defined function
-                                //Push pointer in source to name for now and decide if local or global at end
-                                //Note, two passes are necessary here since a variable read or passed to a function
-                                //may be local or global. Writing to the variable if it wasn't declared with global
-                                //means it's local whether the write occurs in source before or after the read.
+                                //Check if alpha symbol is keyword like break or def
+                                int8_t symbol_id=py_find_symbol(py_keywords,text,symbol_len);
+                                if (symbol_id!=-1)
+                                {
+                                    //Keyword
 
-                                //Find var if it exists on stack and create it if it doesn't exist
-                                obj_ptr=py_var_stack(text,symbol_len);
+                                    //Debugging
+                                    {
+                                        debug("KEYWORD: ");
+                                        debug_cstr(text,symbol_len);
+                                        debug("\n");
+                                    }
+                                    //Debugging
 
-                                //Generate bytecode for global variable by default and record index to var info on stack.
-                                //After current function or top-level code is processed, do second pass to change globals
-                                //to locals as needed and change indexes from pointing to var info on stack to pointing to
-                                //locals or globals at runtime.
-                                uint8_t var_index=py_var_index(obj_ptr);
-                                stack_buffer[0]=TOKEN_GLOBAL;
-                                stack_buffer[1]=var_index;
-                                py_append(compile_target,stack_buffer,2);
+                                }
+                                else
+                                {
+                                    //Not built-in function or keyword so must be variable or user-defined function
+                                    //Push pointer in source to name for now and decide if local or global at end
+                                    //Note, two passes are necessary here since a variable read or passed to a function
+                                    //may be local or global. Writing to the variable if it wasn't declared with global
+                                    //means it's local whether the write occurs in source before or after the read.
+
+                                    //Find var if it exists on stack and create it if it doesn't exist
+                                    obj_ptr=py_var_stack(text,symbol_len);
+
+                                    //Generate bytecode for global variable by default and record index to var info on stack.
+                                    //After current function or top-level code is processed, do second pass to change globals
+                                    //to locals as needed and change indexes from pointing to var info on stack to pointing to
+                                    //locals or globals at runtime.
+                                    uint8_t var_index=py_var_index(obj_ptr);
+                                    stack_buffer[0]=TOKEN_GLOBAL;
+                                    stack_buffer[1]=var_index;
+                                    py_append(compile_target,stack_buffer,2);
+                                }
                             }
                         }
                         break;
@@ -842,9 +883,16 @@ py_error_t py_execute(const char *text)
                         //Shunting yard algorithm
                         uint8_t input_token_precedence=py_find_precedence(input_token);
                         bool token_left_assoc;
-                       
+                        
                         //Check for operators requiring special handling
-                        if (input_token_precedence==PREC_OPENING)
+                        if (input_token_precedence==PREC_PERIOD)
+                        {
+                            //Period for attribute such as method or member
+
+                            //Set flag so next alpha symbol can be treated as attribute
+                            exec_flags|=FLAG_ATTRIBUTE;
+                        }
+                        else if (input_token_precedence==PREC_OPENING)
                         {
                             //Opening parentheses or brackets: ( [ {
 

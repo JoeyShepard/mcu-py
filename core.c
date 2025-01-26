@@ -279,9 +279,15 @@ py_error_t py_run(uint8_t *bytecode)
                 debug("%d",*bytecode);
                 bytecode++;
                 break;
+            case TOKEN_ATTRIBUTE:
+                uint8_t attribute_len=*bytecode;
+                bytecode++;
+                debug_cstr(bytecode,attribute_len);
+                bytecode+=attribute_len;
+                break;
 
                 //TODO:
-                //put pointer to builtin in stack item if it fits
+                //put pointer to builtin in stack item if running on architecture where it fits
                 //if with sizeof will optimize out
 
                 break;

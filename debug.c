@@ -102,6 +102,7 @@ static const char *debug_token[]=
 {
     "TOKEN_NONE",
     //Operators start here
+    "TOKEN_PERIOD",
     "TOKEN_LPAREN",
     "TOKEN_LSBRACKET",
     "TOKEN_LCBRACKET",
@@ -165,6 +166,7 @@ static const char *debug_token[]=
     "TOKEN_BUILTIN_FUNC",
     "TOKEN_GLOBAL",
     "TOKEN_LOCAL",
+    "TOKEN_ATTRIBUTE",
     //Tokens starting here are for storing things like variable names on stack during compilation
     "TOKEN_VAR_INFO",
     //Don't remove! Marks last entry

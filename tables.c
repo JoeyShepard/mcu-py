@@ -81,9 +81,7 @@ const uint8_t py_state_chars[]={
 (INPUT_OTHER<<4)|1,           //36
 (INPUT_OP<<4)|2,              //37-38
 (INPUT_QUOTE<<4)|1,           //39
-(INPUT_OP<<4)|6,              //40-45
-(INPUT_G_Z_<<4)|1,            //46
-(INPUT_OP<<4)|1,              //47
+(INPUT_OP<<4)|8,              //40-47
 (INPUT_ZERO<<4)|1,            //48
 (INPUT_NUM<<4)|9,             //49-57
 (INPUT_OP<<4)|1,              //58
@@ -106,10 +104,11 @@ const uint8_t py_state_chars[]={
 (INPUT_OP<<4)|4,              //123-126
 };
 
-const char *py_op_lookup_keys="([{)]}:,=~*/%+-&^|!<>";
+const char *py_op_lookup_keys=".([{)]}:,=~*/%+-&^|!<>";
 
 const uint8_t py_op_lookup_vals[]=
 {
+TOKEN_PERIOD,
 TOKEN_LPAREN,
 TOKEN_LSBRACKET,
 TOKEN_LCBRACKET,
@@ -159,11 +158,12 @@ const uint8_t py_op_combos[][PY_OP_COMBOS_SIZE]=
 {TOKEN_GT, TOKEN_GT, TOKEN_RSHIFT},
 };
 
-const uint8_t py_op_precedence[]={3, 3, 1, 1, 12, 1, 3, 3, 2, 2, 1, 1, 1, 9, 1, 1, 1};
+const uint8_t py_op_precedence[]={1, 3, 3, 1, 1, 12, 1, 3, 3, 2, 2, 1, 1, 1, 9, 1, 1, 1};
 
 const uint8_t py_state_table[]=
 {
 1,(STATE_ERROR<<4)|STATE_VAL,(STATE_NONE<<4)|STATE_VAL,                         //SYMBOL
+1,(STATE_REQ<<4)|STATE_ERROR,(STATE_NONE<<4)|STATE_VAL,                         //TOKEN_PERIOD
 1,(STATE_NONE<<4)|STATE_LPAREN,(STATE_NONE<<4)|STATE_NONE,                      //TOKEN_LPAREN
 1,(STATE_ERROR<<4)|STATE_LSBRACKET,(STATE_INV_NEG_PLUS<<4)|STATE_LCBRACKET,     //TOKEN_LSBRACKET
 1,(STATE_ERROR<<4)|STATE_LCBRACKET,(STATE_INV_NEG_PLUS<<4)|STATE_VAL,           //TOKEN_LCBRACKET

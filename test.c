@@ -48,24 +48,23 @@
 - track lines for errors instead of characters since characters not very accurate
   - move source line num for errors to global obj so functions dont need to pass line num in case callee errors 
 - if space, bytecode for multiple values of one type for lists
-- double check optimizer on msp430 resolves py_sp etc defines. if not, buffer value before loop.
-  - ie py_peek_stack
 - added exception to state LUT - need more syntax checks now?
   - already checking for 2+3) so what else?
 - two bytecodes for tuple token depending on 8 or 16 bit arg count?
 - more logical to change some enums to #define?
 - some syntax errors are PY_ERROR_INPUT and some PY_ERROR_SYNTAX
 - code for processing ] } ) is huge - convert to table and compare size
-- #defines in core.h bigger than struct?
-  - no need to declare global struct and waste memory. just case to struct pointer
 - redundant to have 0 at end of heap linked list and heap_ptr
 - sizes shows 56 bytes for table.c in data section
 
 CURRENTLY
 - variables
-  - assignments
-- . notation
-- top level tuples
+  - assignments FIRST
+  - locals and globals
+  - a,b=1,5
+- user-defined functions
+- keywords
+  - if, while, for
 */
 
 void test_error_handler(uint8_t e, uint16_t line_number)

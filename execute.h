@@ -65,6 +65,7 @@
         INPUT_OTHER,        //printable characters with no function: $, @, ? etc
         INPUT_HASH,         //#
         INPUT_OP,           //all operators: +, -, (, ), [, ] etc
+        INPUT_PERIOD,
         //Not in spreadsheet - must come at end
         INPUT_ERROR
     };
@@ -72,6 +73,7 @@
     //Operator precedence names for first five groups which require special handling
     enum PrecedenceNames
     {
+        PREC_PERIOD,    // . for attribute
         PREC_OPENING,   // ( [ {
         PREC_CLOSING,   // ) ] }
         PREC_COLON,     // : 
@@ -87,7 +89,8 @@
         FLAG_VALUE=             4,      //Symbol being processed is alpha/num/hex/str?
         FLAG_DONE=              8,      //Done processing source?
         FLAG_COMMA_LAST=        0x10,   //Last symbol processed was a comma?
-        FLAG_COLON_LAST=        0x20    //Last symbol processed was a colon?
+        FLAG_COLON_LAST=        0x20,   //Last symbol processed was a colon?
+        FLAG_ATTRIBUTE=         0x40    //Last 
     };
 
     //Flags for 16 bits of metadata for each opening ( [ and {
