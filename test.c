@@ -56,12 +56,14 @@
 - code for processing ] } ) is huge - convert to table and compare size
 - redundant to have 0 at end of heap linked list and heap_ptr
 - sizes shows 56 bytes for table.c in data section
+- remove second argument of py_error_set
 
 CURRENTLY
 - variables
   - assignments FIRST
   - locals and globals
   - a,b=1,5
+    - noticed that at runtime ie a+2 requires resolution of a so clear not being assigned to
 - user-defined functions
 - keywords
   - if, while, for

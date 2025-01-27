@@ -139,4 +139,27 @@
         VAR_NAME                //sizeof(const char *) - large on x86 but small on systems were RAM is scarce
     };
 
+    enum CompileStates
+    {
+
+        //TODO: state machine?
+
+        COMPILE_BEGIN,
+        COMPILE_LEFT_EXPRESSION,
+        COMPILE_RIGHT_EXPRESSION,
+        COMPILE_FOR,
+        COMPILE_FOR_EXPRESSION,
+        COMPILE_FOR_IN,
+        COMPILE_FOR_IN_EXPRESSION,
+        COMPILE_FOR_COLON,
+        COMPILE_IF,
+        COMPILE_IF_EXPRESSION,
+        COMPILE_IF_COLON,
+        COMPILE_ELSE,
+        COMPILE_ELSE_COLON,
+        COMPILE_WHILE,
+        COMPILE_WHILE_EXPRESSION,
+        COMPILE_WHILE_COLON,
+    };
+
 #endif

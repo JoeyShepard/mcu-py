@@ -26,6 +26,7 @@ static uint8_t *py_var_stack(const char *text, uint8_t symbol_len);
 static uint8_t py_var_index(uint8_t *target_ptr);
 static uint8_t *py_remove_stack(uint8_t *obj);
 static uint8_t py_find_precedence(uint8_t token);
+static uint8_t py_assign_op(uint8_t token);
 
 
 //Compare counted strings
@@ -281,10 +282,6 @@ static uint8_t *py_peek_stack(uint8_t *obj, uint8_t pop_class)
         //Pointer reached end of stack - done searching
         if (new_obj==(uint8_t*)py+(py->mem_size)) return NULL;
 
-        {
-            //debug("new_obj: 
-        }
-
         //TODO: use token ranges instead of switch? look up table?
         //Return address if token correct type
         switch (pop_class)
@@ -461,6 +458,26 @@ static uint8_t py_find_precedence(uint8_t token)
     }
 }
 
+//Look up op like + from assignment like +=
+static uint8_t py_assign_op(uint8_t token)
+{
+    switch(token)
+    {
+        case TOKEN_EXP_EQ:      return TOKEN_EXP;
+        case TOKEN_MUL_EQ:      return TOKEN_MUL;
+        case TOKEN_DIV_EQ:      return TOKEN_DIV;
+        case TOKEN_MOD_EQ:      return TOKEN_MOD;
+        case TOKEN_ADD_EQ:      return TOKEN_ADD;
+        case TOKEN_SUB_EQ:      return TOKEN_SUB;
+        case TOKEN_LSHIFT_EQ:   return TOKEN_LSHIFT;
+        case TOKEN_RSHIFT_EQ:   return TOKEN_RSHIFT;
+        case TOKEN_AND_EQ:      return TOKEN_AND;
+        case TOKEN_XOR_EQ:      return TOKEN_XOR;
+        case TOKEN_OR_EQ:       return TOKEN_OR;
+        default:                return TOKEN_NONE;
+    }
+}
+
 //Execute Python source passed in as a string
 py_error_t py_execute(const char *text)
 {
@@ -511,8 +528,9 @@ py_error_t py_execute(const char *text)
     uint8_t last_interpreter_state=STATE_NONE;      //Assigned immediately below but assign here too to appease linter
     uint8_t exec_flags=FLAG_RESET_STATE;
     uint16_t line_number=0;
-    uint8_t *compile_target=NULL;
     uint16_t top_comma_count;
+    uint8_t compile_state;
+    uint8_t *compile_target=NULL;
 
     //Local variables used temporarily in code
     uint16_t symbol_len;
@@ -537,6 +555,7 @@ py_error_t py_execute(const char *text)
             exec_flags&=~FLAG_RESET_STATE;
             line_number++;
             top_comma_count=0;
+            compile_state=COMPILE_BEGIN;
             if (compile_target==NULL)
             {
                 //Allocate temp mem for code outside of function
@@ -1145,7 +1164,7 @@ py_error_t py_execute(const char *text)
                             //Compile pending operators
                             while(1)
                             {
-                                if (py_custom_pop(stack_buffer, POP_OPERATORS)==false)
+                                if (py_custom_pop(stack_buffer,POP_OPERATORS)==false)
                                 {
                                     //Reached end of stack - no more operators left to pop and compile
                                     break;
@@ -1272,6 +1291,16 @@ py_error_t py_execute(const char *text)
                         else if (input_token_precedence==PREC_ASSIGN)
                         {
                             //Assigning values: = += -= etc
+                            if (py_custom_pop(stack_buffer, POP_END_LINE))
+                            {
+                                //Error: ( [ { or operator left on stack
+                                return py_error_set(PY_ERROR_SYNTAX,0);
+                            }
+                            if (last_interpreter_state!=STATE_VAL)
+                            {
+                                //Error: no value to assign to or incomplete like 2+
+                                return py_error_set(PY_ERROR_SYNTAX,0);
+                            }
                         }
                         else
                         {

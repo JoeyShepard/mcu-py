@@ -3,7 +3,7 @@
      32	      0	      0	     32	     20	custom.o
    4122	   1456	  10032	  15610	   3cfa	debug.o
     133	      0	      0	    133	     85	error.o
-   4201	      0	      0	   4201	   1069	execute.o
+   4254	      0	      0	   4254	   109e	execute.o
      32	      0	      9	     41	     29	globals.o
     570	     56	      0	    626	    272	tables.o
     435	      0	      0	    435	    1b3	test.o
