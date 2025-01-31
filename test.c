@@ -45,6 +45,7 @@
 - x="a""b" works in python
 - allocate and all other functions that can set error have error checking on return?
   - smallest but slowest is to check error at beginning of function
+  - actually, wrapper function for compiling since speed not important
 - track lines for errors instead of characters since characters not very accurate
   - move source line num for errors to global obj so functions dont need to pass line num in case callee errors 
 - if space, bytecode for multiple values of one type for lists
@@ -54,9 +55,11 @@
 - more logical to change some enums to #define?
 - some syntax errors are PY_ERROR_INPUT and some PY_ERROR_SYNTAX
 - code for processing ] } ) is huge - convert to table and compare size
-- redundant to have 0 at end of heap linked list and heap_ptr
-- sizes shows 56 bytes for table.c in data section
+- redundant to have 0 at end of heap linked list and heap_ptr?
 - remove second argument of py_error_set
+- double check sp_count useful
+- compile state machine checks for comma and other things. simplify other parts?
+- compile state machine has some redundancy - shrink?
 
 CURRENTLY
 - variables

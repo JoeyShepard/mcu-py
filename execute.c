@@ -27,6 +27,7 @@ static uint8_t py_var_index(uint8_t *target_ptr);
 static uint8_t *py_remove_stack(uint8_t *obj);
 static uint8_t py_find_precedence(uint8_t token);
 static uint8_t py_assign_op(uint8_t token);
+static uint8_t py_compile_state(uint8_t state, uint8_t change);
 
 
 //Compare counted strings
@@ -478,6 +479,12 @@ static uint8_t py_assign_op(uint8_t token)
     }
 }
 
+static uint8_t py_compile_state(uint8_t state, uint8_t change)
+{
+    if (state==COMPILE_ERROR) return COMPILE_ERROR;
+    
+}
+
 //Execute Python source passed in as a string
 py_error_t py_execute(const char *text)
 {
@@ -900,6 +907,7 @@ py_error_t py_execute(const char *text)
                         break;
                     case SYMBOL_OP:
                         //Shunting yard algorithm
+                        ; //Needed before declaration below by older C standard used by msp430-gcc
                         uint8_t input_token_precedence=py_find_precedence(input_token);
                         bool token_left_assoc;
                         

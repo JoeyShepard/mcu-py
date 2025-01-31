@@ -280,6 +280,7 @@ py_error_t py_run(uint8_t *bytecode)
                 bytecode++;
                 break;
             case TOKEN_ATTRIBUTE:
+                ; //Semi-colon needed before declaration below for older C standard used by msp430-gcc
                 uint8_t attribute_len=*bytecode;
                 bytecode++;
                 debug_cstr(bytecode,attribute_len);
@@ -288,7 +289,7 @@ py_error_t py_run(uint8_t *bytecode)
 
                 //TODO:
                 //put pointer to builtin in stack item if running on architecture where it fits
-                //if with sizeof will optimize out
+                //if with sizeof is constant and will optimize out
 
                 break;
         } //switch(op)

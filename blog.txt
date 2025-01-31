@@ -38,6 +38,8 @@ Differences
   - await
   - //
   - 6.10 chaining - didn't know about it and not adding
+  - for x[0] in y - may work but not if doesnt
+    - for x in y in z errors but same error?
 
 Other
 - maybe mentioned above but debug.c was very helpful

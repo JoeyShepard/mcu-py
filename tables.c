@@ -9,7 +9,7 @@
 
 //Paste tables from spreadsheet starting here:
 
-const char *py_functions=
+const char py_functions[]=
 "\x3""abs"
 "\x3""bin"
 "\x3""chr"
@@ -32,7 +32,7 @@ const char *py_functions=
 "\x5""tuple"
 "\0";
 
-const char *py_keywords=
+const char py_keywords[]=
 "\x5""break"
 "\x8""continue"
 "\x3""def"
@@ -104,7 +104,7 @@ const uint8_t py_state_chars[]={
 (INPUT_OP<<4)|4,              //123-126
 };
 
-const char *py_op_lookup_keys=".([{)]}:,=~*/%+-&^|!<>";
+const char py_op_lookup_keys[]=".([{)]}:,=~*/%+-&^|!<>";
 
 const uint8_t py_op_lookup_vals[]=
 {
@@ -132,7 +132,7 @@ TOKEN_LT,
 TOKEN_GT,
 };
 
-const char *py_op_lookup_keys_long[]={"\x3""not", "\x3""and", "\x2""or", "\x2""in"};
+const char py_op_lookup_keys_long[][5]={"\x3""not", "\x3""and", "\x2""or", "\x2""in"};
 
 const uint8_t py_op_lookup_vals_long[]={TOKEN_BOOL_NOT, TOKEN_BOOL_AND, TOKEN_BOOL_OR, TOKEN_IN};
 

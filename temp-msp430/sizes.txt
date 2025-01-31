@@ -1,0 +1,7 @@
+   text	   data	    bss	    dec	    hex	filename
+   1068	      0	      0	   1068	    42c	core.o
+      0	      0	      0	      0	      0	custom.o
+     56	      0	      0	     56	     38	error.o
+   3844	      0	      0	   3844	    f04	execute.o
+      0	      0	      4	      4	      4	globals.o
+    472	      0	      0	    472	    1d8	tables.o
