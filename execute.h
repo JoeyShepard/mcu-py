@@ -141,9 +141,7 @@
 
     enum CompileStates
     {
-
-        //TODO: state machine?
-
+        //Tokens starting here must appear in same order as in spreadsheet!
         COMPILE_BEGIN,
         COMPILE_LEFT_EXPRESSION,
         COMPILE_ASSIGN,
@@ -153,17 +151,11 @@
         COMPILE_FOR_IN,
         COMPILE_FOR_IN_EXPRESSION,
         COMPILE_FOR_COLON,
-        COMPILE_IF,
-        COMPILE_IF_EXPRESSION,
-        COMPILE_IF_COLON,
+        COMPILE_IFWHILE,
+        COMPILE_IFWHILE_EXPRESSION,
+        COMPILE_IFWHILE_COLON,
         COMPILE_ELSE,
         COMPILE_ELSE_COLON,
-        COMPILE_WHILE,
-        COMPILE_WHILE_EXPRESSION,
-        COMPILE_WHILE_COLON,
-        COMPILE_KEYWORD_NO_ARG,
-        COMPILE_KEYWORD_ARG_REQUIRED,
-        COMPILE_KEYWORD_ARG_OPTIONAL,
         COMPILE_DEF,
         COMPILE_DEF_ALPHA,
         COMPILE_DEF_LPAREN,
@@ -171,13 +163,30 @@
         COMPILE_DEF_COMMA,
         COMPILE_DEF_RPAREN,
         COMPILE_DEF_COLON,
-        COMPILE_ERROR
+        COMPILE_NO_ARG,
+        COMPILE_ARG_OPT,
+        COMPILE_ARG_OPT_EXP,
+        COMPILE_ARG_REQ,
+        COMPILE_ARG_REQ_EXP,
+        //Tokens starting here are not part of compile state machine - order not important
+        COMPILE_ERROR,
+        COMPILE_DONE,
+        COMPILE_BUILTIN,
+        COMPILE_VALUE,
+
     };
 
     enum CompileInputs
     {
-        COMPILE_INPUT_EXPRESSION,
-        COMPILE_INPUT_
+        COMPILE_INPUT_OP_VAL,
+        COMPILE_INPUT_ASSIGN,
+        COMPILE_INPUT_IN,
+        COMPILE_INPUT_COLON,
+        COMPILE_INPUT_ALPHA,
+        COMPILE_INPUT_LPAREN,
+        COMPILE_INPUT_RPAREN,
+        COMPILE_INPUT_COMMA,
+        COMPILE_INPUT_DONE
     };
 
 #endif

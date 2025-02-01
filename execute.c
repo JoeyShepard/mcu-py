@@ -27,7 +27,7 @@ static uint8_t py_var_index(uint8_t *target_ptr);
 static uint8_t *py_remove_stack(uint8_t *obj);
 static uint8_t py_find_precedence(uint8_t token);
 static uint8_t py_assign_op(uint8_t token);
-static uint8_t py_compile_state(uint8_t state, uint8_t change);
+static uint8_t py_compile_next_state(uint8_t state, uint8_t change);
 
 
 //Compare counted strings
@@ -479,7 +479,7 @@ static uint8_t py_assign_op(uint8_t token)
     }
 }
 
-static uint8_t py_compile_state(uint8_t state, uint8_t change)
+static uint8_t py_compile_next_state(uint8_t state, uint8_t change)
 {
     if (state==COMPILE_ERROR) return COMPILE_ERROR;
     
@@ -808,13 +808,18 @@ py_error_t py_execute(const char *text)
                         else
                         {
                             //Check if alpha symbol is built-in Python function
-                            int8_t symbol_id=py_find_symbol(py_functions,text,symbol_len);
+                            
+                            //int8_t symbol_id=py_find_symbol(py_functions,text,symbol_len);
+                            int8_t symbol_id=-1;
+
                             if (symbol_id!=-1)
                             {
+                                /*
                                 //Built-in function
                                 stack_buffer[0]=TOKEN_BUILTIN_FUNC;
                                 stack_buffer[1]=symbol_id;
                                 py_append(compile_target,stack_buffer,2);
+                                */
                             }
                             else
                             {

@@ -10,8 +10,9 @@
     #define PY_OP_COMBOS_COUNT              18  //Number of elements in py_op_combos
 
     //Globals
-    extern const char py_functions[];
     extern const char py_keywords[];
+    extern const uint8_t py_keyword_token[];
+    extern const uint8_t py_keyword_class[];
     extern const uint8_t py_symbol_state[][PY_SYMBOL_ROW_SIZE];
     extern const uint8_t py_state_chars[];
     extern const char py_op_lookup_keys[];
@@ -21,5 +22,8 @@
     extern const uint8_t py_op_combos[][PY_OP_COMBOS_SIZE];
     extern const uint8_t py_op_precedence[];
     extern const uint8_t py_state_table[];
+    extern const uint8_t py_compile_state[];
+    extern const uint32_t py_compile_varant_count;
+    extern const uint32_t py_compile_done;
 
 #endif

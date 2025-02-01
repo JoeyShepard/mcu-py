@@ -9,7 +9,7 @@
 
 //Paste tables from spreadsheet starting here:
 
-const char py_functions[]=
+const char py_keywords[]=
 "\x3""abs"
 "\x3""bin"
 "\x3""chr"
@@ -30,9 +30,6 @@ const char py_functions[]=
 "\x6""sorted"
 "\x3""str"
 "\x5""tuple"
-"\0";
-
-const char py_keywords[]=
 "\x5""break"
 "\x8""continue"
 "\x3""def"
@@ -49,6 +46,82 @@ const char py_keywords[]=
 "\x4""True"
 "\x5""while"
 "\0";
+
+const uint8_t py_keyword_token[]={
+TOKEN_FUNC_ABS,
+TOKEN_FUNC_BIN,
+TOKEN_FUNC_CHR,
+TOKEN_FUNC_DICT,
+TOKEN_FUNC_DIVMOD,
+TOKEN_FUNC_HEX,
+TOKEN_FUNC_INPUT,
+TOKEN_FUNC_INT,
+TOKEN_FUNC_LEN,
+TOKEN_FUNC_LIST,
+TOKEN_FUNC_MAX,
+TOKEN_FUNC_MIN,
+TOKEN_FUNC_OCT,
+TOKEN_FUNC_ORD,
+TOKEN_FUNC_PRINT,
+TOKEN_FUNC_RANGE,
+TOKEN_FUNC_SET,
+TOKEN_FUNC_SORTED,
+TOKEN_FUNC_STR,
+TOKEN_FUNC_TUPLE,
+TOKEN_KEYWORD_BREAK,
+TOKEN_KEYWORD_CONTINUE,
+TOKEN_KEYWORD_DEF,
+TOKEN_KEYWORD_DEL,
+TOKEN_KEYWORD_ELIF,
+TOKEN_KEYWORD_ELSE,
+TOKEN_KEYWORD_FALSE,
+TOKEN_KEYWORD_FOR,
+TOKEN_KEYWORD_GLOBAL,
+TOKEN_KEYWORD_IF,
+TOKEN_KEYWORD_NONE,
+TOKEN_KEYWORD_PASS,
+TOKEN_KEYWORD_RETURN,
+TOKEN_KEYWORD_TRUE,
+TOKEN_KEYWORD_WHILE,
+};
+
+const uint8_t py_keyword_class[]={
+COMPILE_BUILTIN,              //abs()
+COMPILE_BUILTIN,              //bin()
+COMPILE_BUILTIN,              //chr()
+COMPILE_BUILTIN,              //dict()
+COMPILE_BUILTIN,              //divmod()
+COMPILE_BUILTIN,              //hex()
+COMPILE_BUILTIN,              //input()
+COMPILE_BUILTIN,              //int()
+COMPILE_BUILTIN,              //len()
+COMPILE_BUILTIN,              //list()
+COMPILE_BUILTIN,              //max()
+COMPILE_BUILTIN,              //min()
+COMPILE_BUILTIN,              //oct()
+COMPILE_BUILTIN,              //ord()
+COMPILE_BUILTIN,              //print()
+COMPILE_BUILTIN,              //range()
+COMPILE_BUILTIN,              //set()
+COMPILE_BUILTIN,              //sorted()
+COMPILE_BUILTIN,              //str()
+COMPILE_BUILTIN,              //tuple()
+COMPILE_NO_ARG,               //break
+COMPILE_NO_ARG,               //continue
+COMPILE_DEF,                  //def
+COMPILE_ARG_REQ,              //del
+COMPILE_IFWHILE,              //elif
+COMPILE_ELSE,                 //else
+COMPILE_VALUE,                //False
+COMPILE_FOR,                  //for
+COMPILE_ARG_REQ,              //global
+COMPILE_IFWHILE,              //if
+COMPILE_VALUE,                //None
+COMPILE_NO_ARG,               //pass
+COMPILE_ARG_REQ,              //return
+COMPILE_VALUE,                //True
+COMPILE_IFWHILE,              //while
+};
 
 const uint8_t py_symbol_state[][PY_SYMBOL_ROW_SIZE]={
 {SYMBOL_ALPHA|SYMBOL_ALPHA<<4, SYMBOL_ERROR|SYMBOL_ERROR<<4, SYMBOL_HEX|SYMBOL_HEX<<4, SYMBOL_STRING|SYMBOL_COMMENT<<4, SYMBOL_ALPHA}, //A_F
@@ -181,4 +254,37 @@ const uint8_t py_state_table[]=
 1,(STATE_ERROR<<4)|STATE_NOT,(STATE_NONE<<4)|STATE_VAL,                         //TOKEN_BOOL_NOT
 2,(STATE_REQ<<4)|STATE_ERROR,(STATE_NONE<<4)|STATE_VAL,                         //TOKEN_BOOL_AND
 };
+
+const uint8_t py_compile_state[]={
+COMPILE_LEFT_EXPRESSION, COMPILE_ERROR, 0xCE,                                   //COMPILE_BEGIN
+COMPILE_LEFT_EXPRESSION, COMPILE_ASSIGN, 0x2,                                   //COMPILE_LEFT_EXPRESSION
+COMPILE_RIGHT_EXPRESSION, COMPILE_ERROR, 0xCE,                                  //COMPILE_ASSIGN
+COMPILE_RIGHT_EXPRESSION, COMPILE_ERROR, 0x2,                                   //COMPILE_RIGHT_EXPRESSION
+COMPILE_FOR_EXPRESSION, COMPILE_ERROR, 0xCE,                                    //COMPILE_FOR
+COMPILE_FOR_EXPRESSION, COMPILE_ERROR, COMPILE_FOR_IN, 0x24, 0x0,               //COMPILE_FOR_EXPRESSION
+COMPILE_FOR_IN_EXPRESSION, COMPILE_ERROR, 0xCE,                                 //COMPILE_FOR_IN
+COMPILE_FOR_IN_EXPRESSION, COMPILE_ERROR, COMPILE_FOR_COLON, 0x84, 0x0,         //COMPILE_FOR_IN_EXPRESSION
+COMPILE_ERROR, 0, 0x0,                                                          //COMPILE_FOR_COLON
+COMPILE_IFWHILE_EXPRESSION, COMPILE_ERROR, 0xCE,                                //COMPILE_IFWHILE
+COMPILE_IFWHILE_EXPRESSION, COMPILE_ERROR, COMPILE_IFWHILE_COLON, 0x84, 0x0,    //COMPILE_IFWHILE_EXPRESSION
+COMPILE_ERROR, 0, 0x0,                                                          //COMPILE_IFWHILE_COLON
+COMPILE_ERROR, COMPILE_ELSE_COLON, 0x8,                                         //COMPILE_ELSE
+COMPILE_ERROR, 0, 0x0,                                                          //COMPILE_ELSE_COLON
+COMPILE_ERROR, COMPILE_DEF_ALPHA, 0x10,                                         //COMPILE_DEF
+COMPILE_ERROR, COMPILE_DEF_LPAREN, 0x20,                                        //COMPILE_DEF_ALPHA
+COMPILE_ERROR, COMPILE_DEF_VAR, 0x10,                                           //COMPILE_DEF_LPAREN
+COMPILE_ERROR, COMPILE_DEF_RPAREN, COMPILE_DEF_COMMA, 0x0, 0x90,                //COMPILE_DEF_VAR
+COMPILE_ERROR, COMPILE_DEF_VAR, 0x10,                                           //COMPILE_DEF_COMMA
+COMPILE_ERROR, COMPILE_DEF_COLON, 0x8,                                          //COMPILE_DEF_RPAREN
+COMPILE_ERROR, 0, 0x0,                                                          //COMPILE_DEF_COLON
+COMPILE_ERROR, 0, 0x0,                                                          //COMPILE_NO_ARG
+COMPILE_ARG_OPT_EXP, COMPILE_ERROR, 0xCE,                                       //COMPILE_ARG_OPT
+COMPILE_ARG_OPT_EXP, COMPILE_ERROR, 0x2,                                        //COMPILE_ARG_OPT_OPT
+COMPILE_ARG_REQ_EXP, COMPILE_ERROR, 0xCE,                                       //COMPILE_ARG_REQ
+COMPILE_ARG_REQ_EXP, COMPILE_ERROR, 0x2,                                        //COMPILE_ARG_REQ_EXP
+};
+
+const uint32_t py_compile_variant_count=0x204A0;
+
+const uint32_t py_compile_done=0x14FD6F4;
 

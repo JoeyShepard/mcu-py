@@ -267,10 +267,12 @@ py_error_t py_run(uint8_t *bytecode)
                 break;
             case TOKEN_INDEX:
                 break;
+            /*
             case TOKEN_BUILTIN_FUNC:
                 debug("%s",debug_value("builtin",*bytecode));
                 bytecode++;
                 break;
+            */
             case TOKEN_GLOBAL:
                 debug("%d",*bytecode);
                 bytecode++;
