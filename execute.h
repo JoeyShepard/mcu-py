@@ -47,7 +47,10 @@
         SYMBOL_OP=SYMBOL_RETURN,    //all operators: +, -, (, ), [, ] etc
         SYMBOL_ERROR,               //invalid state - throw error
         SYMBOL_END_LINE,            //end of current line in source
-        SYMBOL_END_ALL              //end of source
+        SYMBOL_END_ALL,             //end of source
+        //Not in spreadsheet either. Converted from alpha symbol.
+        SYMBOL_BUILTIN,
+        SYMBOL_KEYWORD_VALUE
     };
 
     enum SymbolInputs
@@ -167,13 +170,13 @@
         COMPILE_ARG_OPT,
         COMPILE_ARG_OPT_EXP,
         COMPILE_ARG_REQ,
-        COMPILE_ARG_REQ_EXP,
+        COMPILE_ARG_REQ_VAR,
+        COMPILE_ARG_REQ_COMMA,
         //Tokens starting here are not part of compile state machine - order not important
         COMPILE_ERROR,
         COMPILE_DONE,
         COMPILE_BUILTIN,
         COMPILE_VALUE,
-
     };
 
     enum CompileInputs

@@ -149,7 +149,7 @@ static const char *debug_token[]=
     "TOKEN_BOOL_NOT",
     "TOKEN_BOOL_AND",
     "TOKEN_BOOL_OR",
-    //Tokens below here are bytecode - saves space to reuse token range
+    //Tokens starting here are bytecode - saves space to reuse same token range
     "TOKEN_INT8",
     "TOKEN_INT16",
     "TOKEN_INT32",
@@ -163,10 +163,46 @@ static const char *debug_token[]=
     "TOKEN_NONE_OBJ",
     "TOKEN_SLICE_INDEX",
     "TOKEN_INDEX",
-    "TOKEN_BUILTIN_FUNC",
     "TOKEN_GLOBAL",
     "TOKEN_LOCAL",
     "TOKEN_ATTRIBUTE",
+    "TOKEN_BUILTIN",
+    //Tokens starting here are built-in functions and keywords
+    "TOKEN_FUNC_ABS",
+    "TOKEN_FUNC_BIN",
+    "TOKEN_FUNC_CHR",
+    "TOKEN_FUNC_DICT",
+    "TOKEN_FUNC_DIVMOD",
+    "TOKEN_FUNC_HEX",
+    "TOKEN_FUNC_INPUT",
+    "TOKEN_FUNC_INT",
+    "TOKEN_FUNC_LEN",
+    "TOKEN_FUNC_LIST",
+    "TOKEN_FUNC_MAX",
+    "TOKEN_FUNC_MIN",
+    "TOKEN_FUNC_OCT",
+    "TOKEN_FUNC_ORD",
+    "TOKEN_FUNC_PRINT",
+    "TOKEN_FUNC_RANGE",
+    "TOKEN_FUNC_SET",
+    "TOKEN_FUNC_SORTED",
+    "TOKEN_FUNC_STR",
+    "TOKEN_FUNC_TUPLE",
+    "TOKEN_KEYWORD_BREAK",
+    "TOKEN_KEYWORD_CONTINUE",
+    "TOKEN_KEYWORD_DEF",
+    "TOKEN_KEYWORD_DEL",
+    "TOKEN_KEYWORD_ELIF",
+    "TOKEN_KEYWORD_ELSE",
+    "TOKEN_KEYWORD_FALSE",
+    "TOKEN_KEYWORD_FOR",
+    "TOKEN_KEYWORD_GLOBAL",
+    "TOKEN_KEYWORD_IF",
+    "TOKEN_KEYWORD_NONE",
+    "TOKEN_KEYWORD_PASS",
+    "TOKEN_KEYWORD_RETURN",
+    "TOKEN_KEYWORD_TRUE",
+    "TOKEN_KEYWORD_WHILE",
     //Tokens starting here are for storing things like variable names on stack during compilation
     "TOKEN_VAR_INFO",
     //Don't remove! Marks last entry
@@ -194,28 +230,43 @@ static const char *debug_error[]=
     ""
 };
 
-static const char *debug_builtin[]=
+static const char *debug_compile_state[]=
 {
-    "FUNC_ABS",
-    "FUNC_BIN",
-    "FUNC_CHR",
-    "FUNC_DICT",
-    "FUNC_DIVMOD",
-    "FUNC_HEX",
-    "FUNC_INPUT",
-    "FUNC_INT",
-    "FUNC_LEN",
-    "FUNC_LIST",
-    "FUNC_MAX",
-    "FUNC_MIN",
-    "FUNC_OCT",
-    "FUNC_ORD",
-    "FUNC_PRINT",
-    "FUNC_RANGE",
-    "FUNC_SET",
-    "FUNC_SORTED",
-    "FUNC_STR",
-    "FUNC_TUPLE",
+    //Tokens starting here must appear in same order as in spreadsheet!
+    "COMPILE_BEGIN",
+    "COMPILE_LEFT_EXPRESSION",
+    "COMPILE_ASSIGN",
+    "COMPILE_RIGHT_EXPRESSION",
+    "COMPILE_FOR",
+    "COMPILE_FOR_EXPRESSION",
+    "COMPILE_FOR_IN",
+    "COMPILE_FOR_IN_EXPRESSION",
+    "COMPILE_FOR_COLON",
+    "COMPILE_IFWHILE",
+    "COMPILE_IFWHILE_EXPRESSION",
+    "COMPILE_IFWHILE_COLON",
+    "COMPILE_ELSE",
+    "COMPILE_ELSE_COLON",
+    "COMPILE_DEF",
+    "COMPILE_DEF_ALPHA",
+    "COMPILE_DEF_LPAREN",
+    "COMPILE_DEF_VAR",
+    "COMPILE_DEF_COMMA",
+    "COMPILE_DEF_RPAREN",
+    "COMPILE_DEF_COLON",
+    "COMPILE_NO_ARG",
+    "COMPILE_ARG_OPT",
+    "COMPILE_ARG_OPT_EXP",
+    "COMPILE_ARG_REQ",
+    "COMPILE_ARG_REQ_EXP",
+    //Tokens starting here are not part of compile state machine - order not important
+    "COMPILE_ERROR",
+    "COMPILE_DONE",
+    "COMPILE_BUILTIN",
+    "COMPILE_VALUE",
+
+    //Don't remove! Marks last entry
+    ""
 };
 
 static struct DebugLookup debug_lookup[]=
@@ -226,7 +277,7 @@ static struct DebugLookup debug_lookup[]=
     {"object type",         debug_object_type},
     {"token",               debug_token},
     {"error",               debug_error},
-    {"builtin",             debug_builtin},
+    {"compile state",       debug_compile_state},
     //Don't remove! Marks end of list.
     {"",0}
 };

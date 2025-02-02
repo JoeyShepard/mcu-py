@@ -73,6 +73,7 @@
         TOKEN_GLOBAL,
         TOKEN_LOCAL,
         TOKEN_ATTRIBUTE,
+        TOKEN_BUILTIN,
         //Tokens starting here are built-in functions and keywords
         TOKEN_FUNC_ABS,
         TOKEN_FUNC_BIN,

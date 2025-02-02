@@ -29,13 +29,16 @@ py_error_t py_init(uint8_t *mem, uint16_t size, void (*error_func)(uint8_t, uint
     uint8_t *globals=py_allocate(0);
     uint8_t obj_type=OBJECT_GLOBAL_VALUES;
     py_append(globals,&obj_type,1);
+    if (py->error_num) return py->error_num;
 
     //Add object to hold global variable names
     globals=py_allocate(0);
+    if (py->error_num) return py->error_num;
     obj_type=OBJECT_GLOBAL_NAMES;
     py_append(globals,&obj_type,1);
+    if (py->error_num) return py->error_num;
 
-    return py_error_set(PY_ERROR_NONE,0);
+    return py_error_set(PY_ERROR_NONE);
 }
 
 
@@ -43,7 +46,7 @@ py_error_t py_init(uint8_t *mem, uint16_t size, void (*error_func)(uint8_t, uint
 //=====
 py_error_t py_push(struct StackItem item)
 {
-    if (sizeof(struct StackItem)>py_free()) return py_error_set(PY_ERROR_OUT_OF_MEM,0);
+    if (sizeof(struct StackItem)>py_free()) return py_error_set(PY_ERROR_OUT_OF_MEM);
 
     py->sp-=sizeof(struct StackItem);
     *(struct StackItem*)py->sp=item;
@@ -60,7 +63,7 @@ uint8_t *py_allocate(uint16_t size)
     size+=sizeof(uint16_t);     //Two extra bytes for offset to next item
     if (size>py_free())
     {
-        py_error_set(PY_ERROR_OUT_OF_MEM,0);
+        py_error_set(PY_ERROR_OUT_OF_MEM);
         return 0;
     }
     *(uint16_t*)(py->heap_ptr)=size;
@@ -75,7 +78,7 @@ py_error_t py_append(uint8_t *obj, const void *data, uint16_t size)
     //No need to add two bytes to size since end of list marker already exists
     if (size>py_free())
     {
-        return py_error_set(PY_ERROR_OUT_OF_MEM,0);
+        return py_error_set(PY_ERROR_OUT_OF_MEM);
     }
     uint8_t *data_dest=py->heap_ptr;
     for (uint16_t i=0;i<size;i++)
@@ -119,7 +122,7 @@ py_error_t py_run(uint8_t *bytecode)
     //Debugging
     {
         debug("RUN: size:%u\n",obj_size);
-        debug("%s\n",debug_value("object type",*bytecode));
+        debug("%2d - %s\n",*bytecode,debug_value("object type",*bytecode));
     }
     //Debugging
     
@@ -134,7 +137,7 @@ py_error_t py_run(uint8_t *bytecode)
         bytecode++;
 
         //Debugging
-        debug("%d - %s (",op,debug_value("token",op));
+        debug("%2d - %s (",op,debug_value("token",op));
         //Debugging
 
         switch (op)
@@ -267,12 +270,6 @@ py_error_t py_run(uint8_t *bytecode)
                 break;
             case TOKEN_INDEX:
                 break;
-            /*
-            case TOKEN_BUILTIN_FUNC:
-                debug("%s",debug_value("builtin",*bytecode));
-                bytecode++;
-                break;
-            */
             case TOKEN_GLOBAL:
                 debug("%d",*bytecode);
                 bytecode++;

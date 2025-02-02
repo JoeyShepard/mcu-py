@@ -23,7 +23,7 @@
     extern const uint8_t py_op_precedence[];
     extern const uint8_t py_state_table[];
     extern const uint8_t py_compile_state[];
-    extern const uint32_t py_compile_varant_count;
+    extern const uint32_t py_compile_variant_count;
     extern const uint32_t py_compile_done;
 
 #endif

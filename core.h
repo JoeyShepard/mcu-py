@@ -16,6 +16,7 @@
         uint16_t sp_count;
         uint8_t *heap_ptr;
         uint8_t *heap_begin;
+        uint16_t line_number;
     };
 
     //Stack functionality

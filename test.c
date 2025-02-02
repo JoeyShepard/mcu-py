@@ -59,7 +59,8 @@
 - remove second argument of py_error_set
 - double check sp_count useful
 - compile state machine checks for comma and other things. simplify other parts?
-- compile state machine has some redundancy - shrink?
+- goto for error handling? can be smaller and more uniform
+- line_number in py is good use of mem?
 
 CURRENTLY
 - variables

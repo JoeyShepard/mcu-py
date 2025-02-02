@@ -27,7 +27,7 @@ static uint8_t py_var_index(uint8_t *target_ptr);
 static uint8_t *py_remove_stack(uint8_t *obj);
 static uint8_t py_find_precedence(uint8_t token);
 static uint8_t py_assign_op(uint8_t token);
-static uint8_t py_compile_next_state(uint8_t state, uint8_t change);
+static uint8_t py_next_compile_state(uint8_t state, uint8_t change);
 
 
 //Compare counted strings
@@ -229,7 +229,7 @@ static uint8_t py_token_size(uint8_t token)
 
 static py_error_t py_custom_push(const void *data, uint16_t data_size, uint16_t extra_size)
 {
-    if (py_free()<(data_size+extra_size)) return py_error_set(PY_ERROR_OUT_OF_MEM,0);
+    if (py_free()<(data_size+extra_size)) return py_error_set(PY_ERROR_OUT_OF_MEM);
     
     //Decrease stack pointer
     py->sp-=(data_size+extra_size);
@@ -479,10 +479,47 @@ static uint8_t py_assign_op(uint8_t token)
     }
 }
 
-static uint8_t py_compile_next_state(uint8_t state, uint8_t change)
+static uint8_t py_next_compile_state(uint8_t state, uint8_t change)
 {
-    if (state==COMPILE_ERROR) return COMPILE_ERROR;
-    
+    if ((state==COMPILE_ERROR)||(change==COMPILE_ERROR)) return COMPILE_ERROR;
+    const uint8_t *table=py_compile_state;
+    for (int i=0;i<state;i++)
+    {
+        //Records are 3 or 5 bytes long. Length encoded in one bit in py_compile_variant_count.
+        int table_increase=((py_compile_variant_count&(1<<i))>>i)*2+3;
+        table+=table_increase;
+    }
+
+    //Select table values based on 8 or 16 bit value in table which has 1 or 2 bit fields selecting value
+    uint16_t table_bits;
+    uint8_t bit_mask,field_size;
+    if (py_compile_variant_count&(1<<state))
+    {
+        //5 byte record:
+        //First table value:    1 byte
+        //Second table value:   1 byte
+        //Third table value:    1 byte
+        //16 selection bits:    2 byte
+            //Selection bits are eight 2-bit values selecting between the 3 table values
+        table_bits=*(uint16_t *)(table+3);
+        field_size=2;
+        bit_mask=3;
+    }
+    else
+    {
+        //3 byte record:
+        //First table value:    1 byte
+        //Second table value:   1 byte
+        //8 selection bits:     1 byte
+            //Selection bits are eight 1-bit values selecting between the 2 table values
+        table_bits=table[2];
+        field_size=1;
+        bit_mask=1;
+    }
+
+    //Return value from look up table
+    int table_index=(table_bits&(bit_mask<<(change*field_size)))>>(change*field_size);
+    return table[table_index];
 }
 
 //Execute Python source passed in as a string
@@ -534,9 +571,9 @@ py_error_t py_execute(const char *text)
     uint8_t interpreter_state=STATE_BEGIN;          //Assigned immediately below but assign here too to appease linter
     uint8_t last_interpreter_state=STATE_NONE;      //Assigned immediately below but assign here too to appease linter
     uint8_t exec_flags=FLAG_RESET_STATE;
-    uint16_t line_number=0;
     uint16_t top_comma_count;
     uint8_t compile_state;
+    uint8_t compile_token;
     uint8_t *compile_target=NULL;
 
     //Local variables used temporarily in code
@@ -560,21 +597,22 @@ py_error_t py_execute(const char *text)
             interpreter_state=STATE_BEGIN;
             last_interpreter_state=STATE_NONE;
             exec_flags&=~FLAG_RESET_STATE;
-            line_number++;
+            py->line_number++;
             top_comma_count=0;
             compile_state=COMPILE_BEGIN;
+            compile_token=TOKEN_NONE;
             if (compile_target==NULL)
             {
                 //Allocate temp mem for code outside of function
                 compile_target=py_allocate(0);
                 stack_buffer[0]=OBJECT_CODE;
-                py_append(compile_target,stack_buffer,1);
+                if (py_append(compile_target,stack_buffer,1)) return py->error_num;
             }
         }
 
         //Get next symbol in source
         symbol_queue[0].symbol=py_next_symbol(&text,&symbol_len);
-        if (symbol_queue[0].symbol==SYMBOL_ERROR) return py_error_set(PY_ERROR_INPUT,line_number);
+        if (symbol_queue[0].symbol==SYMBOL_ERROR) return py_error_set(PY_ERROR_INPUT);
 
         //Reclassify operator words to SYMBOL_OP: and, in, or, not
         if (symbol_queue[0].symbol==SYMBOL_ALPHA)
@@ -629,218 +667,294 @@ py_error_t py_execute(const char *text)
             }
         }
 
-        //TODO: size payoff?
-        //Mark values (alpha, num, etc) for processing - simplifies logic below
-        switch (symbol_queue[0].symbol)
+        //Process Python keywords and built-in functions
+        bool skip_interpreter_state=false;  //Skip advancing state machine below for keywords
+        if (symbol_queue[0].symbol==SYMBOL_ALPHA)
         {
-            case SYMBOL_ALPHA:
-            case SYMBOL_HEX:
-            case SYMBOL_NUM:
-            case SYMBOL_STRING:
-                exec_flags|=FLAG_VALUE;
-                break;
-            default:
-                exec_flags&=~FLAG_VALUE;
-                break;
+            int8_t symbol_id=py_find_symbol(py_keywords,text,symbol_len);
+            if (symbol_id!=-1)
+            {
+                if (py_keyword_class[symbol_id]==COMPILE_BUILTIN)
+                {
+                    //Built-in Python function like int or str
+                    symbol_queue[0].symbol==SYMBOL_BUILTIN;
+                    symbol_queue[0].token=py_keyword_token[symbol_id];
+                }
+                else
+                {
+                    //Python keyword like break or def
+                    if (py_keyword_class[symbol_id]==COMPILE_VALUE)
+                    {
+                        //Keyword is a value: True, False, or None
+                        symbol_queue[0].symbol=SYMBOL_KEYWORD_VALUE;
+                        symbol_queue[0].token=py_keyword_token[symbol_id];
+                    }
+                    else
+                    {
+                        //Keyword is not value like True or False
+                        if (compile_state!=COMPILE_BEGIN)
+                        {
+                            //Error - keyword must be first word on line
+                            //Note, keywords do appear after the beginning of the line in things 
+                            //like list comprehensions and `5 if foo() else 7` but no support
+                            //for those yet so simplified check here ok for now
+                            return py_error_set(PY_ERROR_SYNTAX);
+                        }
+                        else
+                        {
+                            //Keyword - initialize state machine
+                            compile_state=py_keyword_class[symbol_id];
+
+                            //Record associated token since ie "if" and "while" use same state machine logic
+                            compile_token=py_keyword_token[symbol_id];
+
+                            //Don't advance interpreter state machine below for words like def and if
+                            skip_interpreter_state=true;
+                        }
+                    }
+                }
+            }
         }
 
-        //Advance interpreter state
-        uint8_t input_token, input_symbol;
-        for (int index=2;index>=0;index--)
-        { 
-            //Always process the symbol at position 2 which is the end of the queue since it's dropped below
-            //Process postion 1 and 0 if at end of line/source or symbol encountered
-            if ((index==2)||
-            (symbol_queue[0].symbol==SYMBOL_END_LINE)||
-            (symbol_queue[0].symbol==SYMBOL_END_ALL)||
-            (exec_flags&FLAG_VALUE))
+        //Don't process or advance state machine for keywords like if and def
+        if (skip_interpreter_state==false)
+        {
+            //Mark values (alpha, num, etc) for processing - simplifies logic below
+            switch (symbol_queue[0].symbol)
             {
-                input_symbol=symbol_queue[index].symbol;
-                input_token=symbol_queue[index].token;
-                exec_flags|=FLAG_ADVANCE_STATE;
+                case SYMBOL_ALPHA:
+                case SYMBOL_HEX:
+                case SYMBOL_NUM:
+                case SYMBOL_STRING:
+                case SYMBOL_BUILTIN:
+                case SYMBOL_KEYWORD_VALUE:
+                    exec_flags|=FLAG_VALUE;
+                    break;
+                default:
+                    exec_flags&=~FLAG_VALUE;
+                    break;
             }
-            else exec_flags&=~FLAG_ADVANCE_STATE;
 
-            //Look up new interpreter state in table
-            if (exec_flags&FLAG_ADVANCE_STATE)
-            {
-                switch (input_symbol)
+            //Advance interpreter state
+            uint8_t input_token, input_symbol;
+            for (int index=2;index>=0;index--)
+            { 
+                //Always process the symbol at position 2 which is the end of the queue since it's dropped below
+                //Process postion 1 and 0 if at end of line/source or symbol encountered
+                if ((index==2)||
+                (symbol_queue[0].symbol==SYMBOL_END_LINE)||
+                (symbol_queue[0].symbol==SYMBOL_END_ALL)||
+                (exec_flags&FLAG_VALUE))
                 {
-                    case SYMBOL_ALPHA: 
-                    case SYMBOL_NUM: 
-                    case SYMBOL_HEX: 
-                    case SYMBOL_STRING: 
-                        //Interpreter state machine handles all tokens so these four symbols are treated as a token
-                        input_token=TOKEN_SYMBOL;
-                        //Fallthrough
-                    case SYMBOL_OP:
-                        //Determine next interpreter state
-                        if ((interpreter_state==STATE_BEGIN)&&
-                            ((input_token==TOKEN_RPAREN)||(input_token==TOKEN_RCBRACKET)))
-                        {
-                            //Exceptions to look up table:
-                            //  ) after , for (1,)
-                            //  } after , for {1:2,} which is just {1:2}
-                            last_interpreter_state=interpreter_state;
-                            interpreter_state=STATE_VAL;
-                        }
-                        else if ((interpreter_state==STATE_BEGIN)&&(input_token==TOKEN_COLON))
-                        {
-                            //Exception to look up table - colon after colon for [::]
-                            last_interpreter_state=interpreter_state;
-                            interpreter_state=STATE_BEGIN;
-                        }
-                        else
-                        {
-                            //Look up next interpreter state from table 
-                            table_ptr=py_state_table;
-                            token_max=*table_ptr;
-                            while(1)
-                            {
-                                if (input_token<token_max)
-                                {
-                                    //Table entry found - process 
-                                    last_interpreter_state=interpreter_state;
-                                    uint8_t rep_match1=*(table_ptr+2)&0xF;
-                                    uint8_t rep_match2=*(table_ptr+2)>>4;
-                                    uint8_t default_val=*(table_ptr+1)&0xF;
-                                    uint8_t rep_val=*(table_ptr+1)>>4;
-                                    if (interpreter_state==rep_match1) interpreter_state=rep_val;
-                                    else if (interpreter_state==rep_match2) interpreter_state=rep_val;
-                                    else interpreter_state=default_val;
-                                    
-                                    //Handle syntax errors
-                                    if (interpreter_state==STATE_ERROR) return py_error_set(PY_ERROR_INPUT,line_number);
-
-                                    //Account for unary + and -
-                                    if (interpreter_state==STATE_INV_NEG_PLUS)
-                                    {
-                                        if (input_token==TOKEN_ADD) input_token=TOKEN_PLUS;
-                                        if (input_token==TOKEN_SUB) input_token=TOKEN_NEG;
-                                    }
-                                    break;
-                                }
-                                else
-                                {
-                                    //No match found - advance to next entry
-                                    table_ptr+=STATE_ENTRY_SIZE;
-                                    token_max+=*table_ptr;
-                                }
-                            }
-                        }
-                        break;
+                    input_symbol=symbol_queue[index].symbol;
+                    input_token=symbol_queue[index].token;
+                    exec_flags|=FLAG_ADVANCE_STATE;
                 }
+                else exec_flags&=~FLAG_ADVANCE_STATE;
 
-                //Account for period as attribute operator - anything other than alpha symbol is error
-                if ((exec_flags&FLAG_ATTRIBUTE)&&
-                    (!((input_symbol==SYMBOL_ALPHA)||(input_symbol==SYMBOL_SPACE))))
+                //Look up new interpreter state in table
+                if (exec_flags&FLAG_ADVANCE_STATE)
                 {
-                    return py_error_set(PY_ERROR_SYNTAX,0);
-                }
-
-                //Values ready to be compiled, operators ready to be processed by Shunting Yard
-                int32_t num=0;
-                const char *num_ptr=text;
-                switch (input_symbol)
-                {
-                    case SYMBOL_END_LINE:
-                        //Done processing line
-                        exec_flags|=FLAG_RESET_STATE;
-                        //Fallthrough
-                    case SYMBOL_END_ALL:
-                        //Make sure expression didn't end with calculation pending like 2+
-                        if (interpreter_state==STATE_REQ) return py_error_set(PY_ERROR_SYNTAX,line_number);
-                       
-                        //Compile pending operators
-                        while(1)
-                        {
-                            if (py_custom_pop(stack_buffer, POP_END_LINE)==false)
+                    switch (input_symbol)
+                    {
+                        case SYMBOL_ALPHA: 
+                        case SYMBOL_NUM: 
+                        case SYMBOL_HEX: 
+                        case SYMBOL_STRING: 
+                        case SYMBOL_BUILTIN:
+                        case SYMBOL_KEYWORD_VALUE:
+                            //Interpreter state machine handles all tokens so these symbols are treated as a token
+                            input_token=TOKEN_SYMBOL;
+                            //Fallthrough
+                        case SYMBOL_OP:
+                            //Determine next interpreter state
+                            if ((interpreter_state==STATE_BEGIN)&&
+                                ((input_token==TOKEN_RPAREN)||(input_token==TOKEN_RCBRACKET)))
                             {
-                                //Reached end of stack - no more operators left to pop and compile
-                                break;
+                                //Exceptions to look up table:
+                                //  ) after , for (1,)
+                                //  } after , for {1:2,} which is just {1:2}
+                                last_interpreter_state=interpreter_state;
+                                interpreter_state=STATE_VAL;
                             }
-                            if (py_find_precedence(*stack_buffer)==PREC_OPENING)
+                            else if ((interpreter_state==STATE_BEGIN)&&(input_token==TOKEN_COLON))
                             {
-                                //If there is a ( [ or { at the end, error on missing } ] or )
-                                return py_error_set(PY_ERROR_SYNTAX,line_number);
-                            }
-
-                            //Compile operator
-                            py_append(compile_target,stack_buffer,1);
-                        }
-
-                        //Check if top level is a tuple is 1,2 rather than (1,2)
-                        if (top_comma_count>0)
-                        {
-                            if (exec_flags&FLAG_COMMA_LAST)
-                            {
-                                //Tuple with empty argument like 1,
-                                top_comma_count--;
-                            }
-                            stack_buffer[0]=TOKEN_TUPLE;
-                            *(uint16_t*)(stack_buffer+1)=top_comma_count+1;
-                            py_append(compile_target,stack_buffer,3);
-                        }
-
-                        if (input_symbol==SYMBOL_END_ALL)
-                        {
-                            //Compile return token since done processing
-                            stack_buffer[0]=TOKEN_RETURN;
-                            py_append(compile_target,stack_buffer,1);
-                            exec_flags|=FLAG_DONE;
-                        }
-                        break;
-                    case SYMBOL_ALPHA:
-                        if (exec_flags&FLAG_ATTRIBUTE)
-                        {
-                            //Symbol is attribute following period
-                            //Copy name of symbol into bytecode - takes more space but simplifies interpeter
-                            //Could keep list of attribute names and assign index but then need to search
-                            //list of names for lookup and then adjust index if no more uses of that attribute
-                            //(which may be a different class using the same name) but then would also need
-                            //reference counter for each attribute name. Less complicated to copy name.
-                            stack_buffer[0]=TOKEN_ATTRIBUTE;
-                            stack_buffer[1]=symbol_len;
-                            py_append(compile_target,stack_buffer,2);
-                            py_append(compile_target,text,symbol_len);
-                            exec_flags&=~FLAG_ATTRIBUTE;
-                        }
-                        else
-                        {
-                            //Check if alpha symbol is built-in Python function
-                            
-                            //int8_t symbol_id=py_find_symbol(py_functions,text,symbol_len);
-                            int8_t symbol_id=-1;
-
-                            if (symbol_id!=-1)
-                            {
-                                /*
-                                //Built-in function
-                                stack_buffer[0]=TOKEN_BUILTIN_FUNC;
-                                stack_buffer[1]=symbol_id;
-                                py_append(compile_target,stack_buffer,2);
-                                */
+                                //Exception to look up table - colon after colon for [::]
+                                last_interpreter_state=interpreter_state;
+                                interpreter_state=STATE_BEGIN;
                             }
                             else
                             {
-                                //Check if alpha symbol is keyword like break or def
-                                int8_t symbol_id=py_find_symbol(py_keywords,text,symbol_len);
-                                if (symbol_id!=-1)
+                                //Look up next interpreter state from table 
+                                table_ptr=py_state_table;
+                                token_max=*table_ptr;
+                                while(1)
                                 {
-                                    //Keyword
-
-                                    //Debugging
+                                    if (input_token<token_max)
                                     {
-                                        debug("KEYWORD: ");
+                                        //Table entry found - process 
+                                        last_interpreter_state=interpreter_state;
+                                        uint8_t rep_match1=*(table_ptr+2)&0xF;
+                                        uint8_t rep_match2=*(table_ptr+2)>>4;
+                                        uint8_t default_val=*(table_ptr+1)&0xF;
+                                        uint8_t rep_val=*(table_ptr+1)>>4;
+                                        if (interpreter_state==rep_match1) interpreter_state=rep_val;
+                                        else if (interpreter_state==rep_match2) interpreter_state=rep_val;
+                                        else interpreter_state=default_val;
+                                        
+                                        //Handle syntax errors
+                                        if (interpreter_state==STATE_ERROR) return py_error_set(PY_ERROR_INPUT);
+
+                                        //Account for unary + and -
+                                        if (interpreter_state==STATE_INV_NEG_PLUS)
+                                        {
+                                            if (input_token==TOKEN_ADD) input_token=TOKEN_PLUS;
+                                            if (input_token==TOKEN_SUB) input_token=TOKEN_NEG;
+                                        }
+                                        break;
+                                    }
+                                    else
+                                    {
+                                        //No match found - advance to next entry
+                                        table_ptr+=STATE_ENTRY_SIZE;
+                                        token_max+=*table_ptr;
+                                    }
+                                }
+                            }
+                            break;
+                    }
+
+                    //Account for period as attribute operator - anything other than alpha symbol is error
+                    if ((exec_flags&FLAG_ATTRIBUTE)&&
+                        (!((input_symbol==SYMBOL_ALPHA)||(input_symbol==SYMBOL_SPACE))))
+                    {
+                        return py_error_set(PY_ERROR_SYNTAX);
+                    }
+
+                    //Reload input_token since set to TOKEN_SYMBOL for state machine but token needed for SYMBOL_BUILTIN
+                    input_token=symbol_queue[index].token;
+
+                    //Values ready to be compiled, operators ready to be processed by Shunting Yard
+                    int32_t num=0;
+                    const char *num_ptr=text;
+                    switch (input_symbol)
+                    {
+                        case SYMBOL_END_LINE:
+                            //Done processing line
+                            exec_flags|=FLAG_RESET_STATE;
+                            //Fallthrough
+                        case SYMBOL_END_ALL:
+                            //Make sure expression didn't end with calculation pending like 2+
+                            if (interpreter_state==STATE_REQ) return py_error_set(PY_ERROR_SYNTAX);
+
+                            //Make sure compile state machine ended in right state, ie not 'for x in' or missing colon
+                            if (py_compile_done&(1<<compile_state)) return py_error_set(PY_ERROR_SYNTAX);
+
+                            //TODO: process for, while, if, etc
+
+                            //Compile pending operators
+                            while(1)
+                            {
+                                if (py_custom_pop(stack_buffer, POP_END_LINE)==false)
+                                {
+                                    //Reached end of stack - no more operators left to pop and compile
+                                    break;
+                                }
+                                if (py_find_precedence(*stack_buffer)==PREC_OPENING)
+                                {
+                                    //If there is a ( [ or { at the end, error on missing } ] or )
+                                    return py_error_set(PY_ERROR_SYNTAX);
+                                }
+
+                                //Compile operator
+                                if (py_append(compile_target,stack_buffer,1)) return py->error_num;
+                            }
+
+                            //Check if top level is a tuple ie 1,2 rather than (1,2)
+                            if (top_comma_count>0)
+                            {
+                                if (exec_flags&FLAG_COMMA_LAST)
+                                {
+                                    //Tuple with empty argument like 1,
+                                    top_comma_count--;
+                                }
+                                stack_buffer[0]=TOKEN_TUPLE;
+                                *(uint16_t*)(stack_buffer+1)=top_comma_count+1;
+                                if (py_append(compile_target,stack_buffer,3)) return py->error_num;
+                            }
+
+                            if (input_symbol==SYMBOL_END_ALL)
+                            {
+                                //Compile return token since done processing
+                                stack_buffer[0]=TOKEN_RETURN;
+                                if (py_append(compile_target,stack_buffer,1)) return py->error_num;
+                                exec_flags|=FLAG_DONE;
+                            }
+                            break;
+                        case SYMBOL_ALPHA:
+                            if (exec_flags&FLAG_ATTRIBUTE)
+                            {
+                                //Symbol is attribute following period
+                                //Copy name of symbol into bytecode - takes more space but simplifies interpeter
+                                //Could keep list of attribute names and assign index but then need to search
+                                //list of names for lookup and then adjust index if no more uses of that attribute
+                                //(which may be a different class using the same name) but then would also need
+                                //reference counter for each attribute name. Less complicated to copy name into
+                                //bytecode.
+                                stack_buffer[0]=TOKEN_ATTRIBUTE;
+                                stack_buffer[1]=symbol_len;
+                                if (py_append(compile_target,stack_buffer,2)) return py->error_num;
+                                if (py_append(compile_target,text,symbol_len)) return py->error_num;
+                                exec_flags&=~FLAG_ATTRIBUTE;
+
+                                //Advance syntax state machine
+                                compile_state=py_next_compile_state(compile_state,COMPILE_INPUT_OP_VAL);
+                            }
+                            else
+                            {
+                                //Advance syntax state machine
+                                compile_state=py_next_compile_state(compile_state,COMPILE_INPUT_ALPHA);
+
+                                //Handle alpha depending on state machine
+                                if (compile_state==COMPILE_ERROR)
+                                {
+                                    return py_error_set(PY_ERROR_SYNTAX);
+                                }
+                                else if (compile_state==COMPILE_DEF_ALPHA)
+                                {
+                                    //TODO: new function
+                                    debug("def name: ");
+                                    debug_cstr(text,symbol_len);
+                                    debug("\n");
+                                }
+                                else if (compile_state==COMPILE_DEF_VAR)
+                                {
+                                    //TODO
+                                    debug("def var: ");
+                                    debug_cstr(text,symbol_len);
+                                    debug("\n");
+                                }
+                                else if (compile_state==COMPILE_ARG_REQ_VAR)
+                                {
+                                    if (compile_token==TOKEN_KEYWORD_DEL)
+                                    {
+                                        //TODO
+                                        debug("del: ");
                                         debug_cstr(text,symbol_len);
                                         debug("\n");
                                     }
-                                    //Debugging
+                                    else if (compile_token==TOKEN_KEYWORD_GLOBAL)
+                                    {
+                                        //TODO
+                                        debug("global: ");
+                                        debug_cstr(text,symbol_len);
+                                        debug("\n");
+                                    }
 
                                 }
                                 else
                                 {
-                                    //Not built-in function or keyword so must be variable or user-defined function
+                                    //All other cases - treat as variable/function
                                     //Push pointer in source to name for now and decide if local or global at end
                                     //Note, two passes are necessary here since a variable read or passed to a function
                                     //may be local or global. Writing to the variable if it wasn't declared with global
@@ -856,542 +970,624 @@ py_error_t py_execute(const char *text)
                                     uint8_t var_index=py_var_index(obj_ptr);
                                     stack_buffer[0]=TOKEN_GLOBAL;
                                     stack_buffer[1]=var_index;
-                                    py_append(compile_target,stack_buffer,2);
+                                    if (py_append(compile_target,stack_buffer,2)) return py->error_num;
                                 }
                             }
-                        }
-                        break;
-                    case SYMBOL_HEX:
-                        num_ptr+=2;
-                        for (int i=0;i<symbol_len-2;i++)
-                        {
-                            num<<=4;
-                            if ((*num_ptr>='0')&&(*num_ptr<='9')) num+=(*num_ptr)-'0';
-                            else if ((*num_ptr>='a')&&(*num_ptr<='z')) num+=(*num_ptr)-'a'+10;
-                            else if ((*num_ptr>='A')&&(*num_ptr<='Z')) num+=(*num_ptr)-'A'+10;
-                            num_ptr++;
-                        }
-                        //Fallthrough
-                    case SYMBOL_NUM:
-                        if (input_symbol==SYMBOL_NUM)
-                        {
-                            for (int i=0;i<symbol_len;i++)
+                            break;
+                        case SYMBOL_HEX:
+                            num_ptr+=2;
+                            for (int i=0;i<symbol_len-2;i++)
                             {
-                                num*=10;
-                                num+=(*num_ptr)-'0';
+                                num<<=4;
+                                if ((*num_ptr>='0')&&(*num_ptr<='9')) num+=(*num_ptr)-'0';
+                                else if ((*num_ptr>='a')&&(*num_ptr<='z')) num+=(*num_ptr)-'a'+10;
+                                else if ((*num_ptr>='A')&&(*num_ptr<='Z')) num+=(*num_ptr)-'A'+10;
                                 num_ptr++;
                             }
-                        }
-                        
-                        uint16_t data_size;
-                        if ((num>=INT8_MIN)&&(num<=INT8_MAX))
-                        {
-                            stack_buffer[0]=TOKEN_INT8;
-                            data_size=1;
-                        }
-                        else if ((num>=INT16_MIN)&&(num<=INT16_MAX))
-                        {
-                            stack_buffer[0]=TOKEN_INT16;
-                            data_size=2;
-                        }
-                        else 
-                        {
-                            stack_buffer[0]=TOKEN_INT32;
-                            data_size=4;
-                        }
-                        py_append(compile_target,stack_buffer,1);
-                        py_append(compile_target,&num,data_size);
-                        break;
-                    case SYMBOL_STRING:
-                        //Compile value
-                        stack_buffer[0]=TOKEN_STRING;
-                        py_append(compile_target,stack_buffer,1);
-                        *(uint16_t *)stack_buffer=symbol_len-2;         //-2 to length to discard quotes
-                        py_append(compile_target,stack_buffer,2);       //Write length of string
-                        py_append(compile_target,text+1,symbol_len-2);  //Write string data. +1 to start after first quote
-                        break;
-                    case SYMBOL_OP:
-                        //Shunting yard algorithm
-                        ; //Needed before declaration below by older C standard used by msp430-gcc
-                        uint8_t input_token_precedence=py_find_precedence(input_token);
-                        bool token_left_assoc;
-                        
-                        //Check for operators requiring special handling
-                        if (input_token_precedence==PREC_PERIOD)
-                        {
-                            //Period for attribute such as method or member
-
-                            //Set flag so next alpha symbol can be treated as attribute
-                            exec_flags|=FLAG_ATTRIBUTE;
-                        }
-                        else if (input_token_precedence==PREC_OPENING)
-                        {
-                            //Opening parentheses or brackets: ( [ {
-
-                            //Push token and 16 bit value for extra data
-                            stack_buffer[0]=input_token;
-                            if (last_interpreter_state==STATE_VAL)
+                            //Fallthrough
+                        case SYMBOL_NUM:
+                            if (input_symbol==SYMBOL_NUM)
                             {
-                                if (input_token==TOKEN_LCBRACKET)
+                                for (int i=0;i<symbol_len;i++)
                                 {
-                                    //Error - neither set nor dictionary can index with {}, ie x{1} or x{1:2}
-                                    return py_error_set(PY_ERROR_SYNTAX,0);
+                                    num*=10;
+                                    num+=(*num_ptr)-'0';
+                                    num_ptr++;
                                 }
-                                else
-                                {
-                                    //Value precedes ( or [ so function or list/dict indexing
-                                    *(uint16_t *)(stack_buffer+1)=FLAG_FUNC_DEREF;
-                                }
+                            }
+                            
+                            uint16_t data_size;
+                            if ((num>=INT8_MIN)&&(num<=INT8_MAX))
+                            {
+                                stack_buffer[0]=TOKEN_INT8;
+                                data_size=1;
+                            }
+                            else if ((num>=INT16_MIN)&&(num<=INT16_MAX))
+                            {
+                                stack_buffer[0]=TOKEN_INT16;
+                                data_size=2;
                             }
                             else 
                             {
-                                //No value preceding ( or [ so not function or list/dict indexing
-                                *(uint16_t *)(stack_buffer+1)=0;
+                                stack_buffer[0]=TOKEN_INT32;
+                                data_size=4;
                             }
-                            py_custom_push(stack_buffer,3,0);
-                        }
-                        else if (input_token_precedence==PREC_CLOSING)
-                        {
-                            //Closing parentheses or brackets: ) ] }
+                            if (py_append(compile_target,stack_buffer,1)) return py->error_num;
+                            if (py_append(compile_target,&num,data_size)) return py->error_num;
 
-                            //Empty pending operators until opening ( [ { found
-                            while(1)
-                            {
-                                if (py_custom_pop(stack_buffer,POP_CLOSING_FOUND)==false)
-                                {
-                                    //Error - no matching bracket found! ie 1+2)
-                                    return py_error_set(PY_ERROR_SYNTAX,line_number);
-                                }
-                                stack_token_precedence=py_find_precedence(stack_buffer[0]);
-                                if (stack_token_precedence==PREC_OPENING)
-                                {
-                                    //Ensure ( matches ), [ matches ], { matches }
-                                    if (input_token!=stack_buffer[0]+3)
-                                    {
-                                        return py_error_set(PY_ERROR_SYNTAX,line_number);
-                                    }
-                                    else
-                                    {
-                                        //Found matching ( [ { on stack - figure out object type and element count
-                                        uint16_t element_data=*(uint16_t *)(stack_buffer+1);
-                                        uint16_t element_count=element_data&FLAG_COUNT_MASK;
-                                        
-                                        //debug("%X %X\n",element_data,element_count);
+                            //Advance syntax state machine
+                            compile_state=py_next_compile_state(compile_state,COMPILE_INPUT_OP_VAL);
 
-                                        if (stack_buffer[0]==TOKEN_LPAREN)
-                                        {
-                                            //Found ( so must be function, tuple, or expression
+                            break;
+                        case SYMBOL_STRING:
+                            //Compile value
+                            stack_buffer[0]=TOKEN_STRING;
+                            if (py_append(compile_target,stack_buffer,1)) return py->error_num;
+                            *(uint16_t *)stack_buffer=symbol_len-2;         //-2 to length to discard quotes
+                            //Write length of string
+                            if (py_append(compile_target,stack_buffer,2)) return py->error_num;
+                            //Write string data. +1 to start after first quote
+                            if (py_append(compile_target,text+1,symbol_len-2)) return py->error_num;
 
-                                            //Adjust element count
-                                            if (last_interpreter_state!=STATE_LPAREN)
-                                            {
-                                                //Parentheses not empty - increment element count
-                                                element_count++;
-                                            }
-                                            if (exec_flags&FLAG_COMMA_LAST)
-                                            {
-                                                //Empty element at end like (1,) so decrease count
-                                                element_count--;
-                                            }
-                                            
-                                            //Preset element count since used by most options below
-                                            *(uint16_t *)(stack_buffer+1)=element_count;
-
-                                            if (element_data&FLAG_FUNC_DEREF)
-                                            {
-                                                //Function
-                                                if (exec_flags&FLAG_COMMA_LAST)
-                                                {
-                                                    //No support for default args so last arg can't be empty
-                                                    //Could add support for default args here
-                                                    return py_error_set(PY_ERROR_MISSING_ARG,0);
-                                                }
-                                                if (element_count>PY_FUNC_MAX_ARGS)
-                                                {
-                                                    //Limit max function arg count so it fits in one byte
-                                                    return py_error_set(PY_ERROR_TOO_MANY_ARGS,0);
-                                                }
-                                                stack_buffer[0]=TOKEN_FUNC;
-                                                stack_buffer[1]=element_count;
-                                                py_append(compile_target,stack_buffer,2);
-                                            }
-                                            else
-                                            {
-                                                //Tuple or expression
-                                                if ((element_count==1)&&(!(exec_flags&FLAG_COMMA_LAST)))
-                                                {
-                                                    //Expression - only one element and no empty arg like (1,)
-                                                    //No special handling
-                                                }
-                                                else
-                                                {
-                                                    //Tuple - empty () or one element with comma (1,) or more than one element
-                                                    stack_buffer[0]=TOKEN_TUPLE;
-                                                    py_append(compile_target,stack_buffer,3);
-                                                }
-                                            }
-                                        }
-                                        else if (stack_buffer[0]==TOKEN_LSBRACKET)
-                                        {
-                                            //Found [ so must be list or indexing of list or dict
-                                            if (element_data&FLAG_LIST_MASK)
-                                            {
-                                                //Slice since at least one colon
-                                                if ((element_data&FLAG_FUNC_DEREF)==false)
-                                                {
-                                                    //Error - slice must be attached to value like x[:] not [:] alone
-                                                    return py_error_set(PY_ERROR_SYNTAX,0);
-                                                }
-
-                                                //Count of colons in slice
-                                                element_count=2-((element_data&FLAG_LIST_MASK)>>FLAG_SHIFT_COUNT);
-                                                if (exec_flags&FLAG_COLON_LAST) element_count++;
-                                               
-                                                //Insert None if any slice numbers missing at end since [::] == [None:None:None] 
-                                                stack_buffer[0]=TOKEN_NONE_OBJ;
-                                                for (int i=0;i<element_count;i++)
-                                                {
-                                                    py_append(compile_target,stack_buffer,1);
-                                                }
-
-                                                //Slice
-                                                stack_buffer[0]=TOKEN_SLICE_INDEX;
-                                                py_append(compile_target,stack_buffer,1);
-                                            }
-                                            else
-                                            {
-                                                //No colons so list or indexing of list or dict
-
-                                                //Adjust element count
-                                                element_count++;    //no check for [] since interpreter state machine catches
-                                                if (exec_flags&FLAG_COMMA_LAST)
-                                                {
-                                                    //Empty element at end like [1,2,] so decrease count
-                                                    element_count--;
-                                                }
-
-                                                //Element count used for dict and set below
-                                                *(uint16_t *)(stack_buffer+1)=element_count;
-
-                                                if (element_data&FLAG_FUNC_DEREF)
-                                                {
-                                                    //Indexing - either single element like x[1] or tuple like x[1,2] or x[1,]
-                                                    if ((element_count==1)&&(!(exec_flags&FLAG_COMMA_LAST)))
-                                                    {
-                                                        //Single element indexing like x[1] - no need to convert to tuple
-                                                        //Index token written below
-                                                    }
-                                                    else
-                                                    {
-                                                        //Tuple indexing - create tuple then index
-                                                        stack_buffer[0]=TOKEN_TUPLE;
-                                                        py_append(compile_target,stack_buffer,3);
-                                                    }
-                                                    //Index in both if and else cases above
-                                                    stack_buffer[0]=TOKEN_INDEX;
-                                                    py_append(compile_target,stack_buffer,1);
-                                                }
-                                                else
-                                                {
-                                                    //List
-                                                    stack_buffer[0]=TOKEN_LIST;
-                                                    py_append(compile_target,stack_buffer,3);
-                                                }
-                                            }
-                                        }
-                                        else if (stack_buffer[0]==TOKEN_LCBRACKET)
-                                        {
-                                            //Found { so must be dict or set
-
-                                            //Adjust element count
-                                            if (last_interpreter_state!=STATE_LCBRACKET)
-                                            {
-                                                //Brackets not empty - increment element count
-                                                element_count++;
-                                            }
-                                            if (exec_flags&FLAG_COMMA_LAST)
-                                            {
-                                                //Empty element at end like {1:2,} so decrease count
-                                                element_count--;
-                                            }
-
-                                            //Element count used for dict and set below
-                                            *(uint16_t *)(stack_buffer+1)=element_count;
-                                            
-                                            //Determine if set or dictionary
-                                            uint16_t temp_flags=element_data&FLAG_DICT_SET_MASK;
-                                            if (temp_flags==PARSE_BEGIN)
-                                            {
-                                                if (element_count==0)
-                                                {
-                                                    //Empty dictionary, ie {}
-                                                    stack_buffer[0]=TOKEN_DICT;
-                                                }
-                                                else
-                                                {
-                                                    //Set with one item so no commas, ie {1}
-                                                    stack_buffer[0]=TOKEN_SET;
-                                                }
-                                            }
-                                            else if (temp_flags==PARSE_SET)
-                                            {
-                                                //Set with at least one comma, ie {1,2}
-                                                stack_buffer[0]=TOKEN_SET;
-                                            }
-                                            else if (temp_flags==PARSE_DICT_COMMA_NEXT)
-                                            {
-                                                if (exec_flags&FLAG_COLON_LAST)
-                                                {
-                                                    //Error - comma expected next but nothing after colon, ie {1:}
-                                                    return py_error_set(PY_ERROR_SYNTAX,0);
-                                                }
-                                                //Dictionary, ie {1:2}
-                                                stack_buffer[0]=TOKEN_DICT;
-                                            }
-                                            else if (temp_flags==PARSE_DICT_COLON_NEXT)
-                                            {
-                                                if ((exec_flags&FLAG_COMMA_LAST)==false)
-                                                {
-                                                    //Error - missing colon, ie {1:2,3}
-                                                    return py_error_set(PY_ERROR_SYNTAX,0);
-                                                }
-
-                                                //Dictionary with empty element at end, ie {1:2,}
-                                                stack_buffer[0]=TOKEN_DICT;
-                                            }
-                                            py_append(compile_target,stack_buffer,3);
-                                        }
-                                        break;
-                                    }
-                                }
-                                else 
-                                {
-                                    //Compile operator - no special handling
-                                    py_append(compile_target,stack_buffer,1);
-                                }
-                            }
-                        }
-                        else if ((input_token_precedence==PREC_COMMA)||
-                                (input_token_precedence==PREC_COLON))
-                        {
-                            //Compile pending operators
-                            while(1)
-                            {
-                                if (py_custom_pop(stack_buffer,POP_OPERATORS)==false)
-                                {
-                                    //Reached end of stack - no more operators left to pop and compile
-                                    break;
-                                }
-
-                                //Compile operator
-                                py_append(compile_target,stack_buffer,1);
-                            }
+                            //Advance syntax state machine
+                            compile_state=py_next_compile_state(compile_state,COMPILE_INPUT_OP_VAL);
                             
-                            //Find ( { [ to edit its attached flags and comma count
-                            obj_ptr=py_peek_stack(NULL,POP_OPENINGS); 
+                            break;
+                        case SYMBOL_BUILTIN:
+                            if (py_append(compile_target,&input_token,1)) return py->error_num;
 
-                            //Used for comma and colon
-                            uint16_t *element_data=(uint16_t *)(obj_ptr+1);
+                            //Advance syntax state machine
+                            compile_state=py_next_compile_state(compile_state,COMPILE_INPUT_OP_VAL);
 
-                            //Increase element count
-                            if (input_token_precedence==PREC_COMMA)
+                            break;
+                        case SYMBOL_KEYWORD_VALUE:
+                            //Keyword is a value: True, False, or None
+                            if (input_token==TOKEN_KEYWORD_NONE)
                             {
-                                //Find ( [ or { on stack and increase comma count in data stored on stack following it
-                                if (obj_ptr==NULL) 
+                                //Python None
+                                stack_buffer[0]=TOKEN_NONE_OBJ;
+                                if (py_append(compile_target,stack_buffer,1)) return py->error_num;
+                            }
+                            else
+                            {
+                                //True or False
+                                stack_buffer[0]=TOKEN_INT8;
+                                if (input_token==TOKEN_KEYWORD_TRUE)
+                                    stack_buffer[1]=1;
+                                else if (input_token==TOKEN_KEYWORD_FALSE)
+                                    stack_buffer[1]=0;
+                                if (py_append(compile_target,stack_buffer,2)) return py->error_num;
+                            }
+
+                            //Advance syntax state machine
+                            compile_state=py_next_compile_state(compile_state,COMPILE_INPUT_OP_VAL);
+                            
+                            break;
+                        case SYMBOL_OP:
+                            //Shunting yard algorithm
+                            ; //Needed before declaration below by older C standard used by msp430-gcc
+                            uint8_t input_token_precedence=py_find_precedence(input_token);
+                            bool token_left_assoc;
+                            
+                            //Check for operators requiring special handling
+                            if (input_token_precedence==PREC_PERIOD)
+                            {
+                                //Period for attribute such as method or member
+
+                                //Set flag so next alpha symbol can be treated as attribute
+                                exec_flags|=FLAG_ATTRIBUTE;
+                            }
+                            else if (input_token_precedence==PREC_OPENING)
+                            {
+                                //Opening parentheses or brackets: ( [ {
+
+                                //Advance syntax state machine
+                                if (input_token==TOKEN_LPAREN)
                                 {
-                                    //No ( [ { on stack so use count of top-level commas ie 1,2 without parentheses
-                                    element_data=&top_comma_count;
+                                    //LPAREN handled different for syntax state machine
+                                    compile_state=py_next_compile_state(compile_state,COMPILE_INPUT_LPAREN);
+                                }
+                                else compile_state=py_next_compile_state(compile_state,COMPILE_INPUT_OP_VAL);
+
+                                //Handle LPAREN differently if required by state machine
+                                if (compile_state==COMPILE_ERROR)
+                                {
+                                    return py_error_set(PY_ERROR_SYNTAX);
+                                }
+                                else if ((input_token==TOKEN_LPAREN)&&(compile_state==COMPILE_DEF_LPAREN))
+                                {
+                                    //State machine advanced but nothing else to do
                                 }
                                 else
                                 {
+                                    //Push token and 16 bit value for extra data
+                                    stack_buffer[0]=input_token;
+                                    if (last_interpreter_state==STATE_VAL)
+                                    {
+                                        if (input_token==TOKEN_LCBRACKET)
+                                        {
+                                            //Error - neither set nor dictionary can index with {}, ie x{1} or x{1:2}
+                                            return py_error_set(PY_ERROR_SYNTAX);
+                                        }
+                                        else
+                                        {
+                                            //Value precedes ( or [ so function or list/dict indexing
+                                            *(uint16_t *)(stack_buffer+1)=FLAG_FUNC_DEREF;
+                                        }
+                                    }
+                                    else 
+                                    {
+                                        //No value preceding ( or [ so not function or list/dict indexing
+                                        *(uint16_t *)(stack_buffer+1)=0;
+                                    }
+                                    py_custom_push(stack_buffer,3,0);
+                                }
+                            }
+                            else if (input_token_precedence==PREC_CLOSING)
+                            {
+                                //Closing parentheses or brackets: ) ] }
+
+                                //Advance syntax state machine
+                                if (input_token==TOKEN_RPAREN)
+                                {
+                                    //RPAREN handled different for syntax state machine
+                                    compile_state=py_next_compile_state(compile_state,COMPILE_INPUT_RPAREN);
+                                }
+                                else compile_state=py_next_compile_state(compile_state,COMPILE_INPUT_OP_VAL);
+
+                                //Handle RPAREN differently if required by state machine
+                                if (compile_state==COMPILE_ERROR)
+                                {
+                                    return py_error_set(PY_ERROR_SYNTAX);
+                                }
+                                else if ((input_token==TOKEN_RPAREN)&&(compile_state==COMPILE_DEF_RPAREN))
+                                {
+                                    //State machine advanced but nothing else to do
+                                }
+                                else
+                                {
+                                    //Empty pending operators until opening ( [ { found
+                                    while(1)
+                                    {
+                                        if (py_custom_pop(stack_buffer,POP_CLOSING_FOUND)==false)
+                                        {
+                                            //Error - no matching bracket found! ie 1+2)
+                                            return py_error_set(PY_ERROR_SYNTAX);
+                                        }
+                                        stack_token_precedence=py_find_precedence(stack_buffer[0]);
+                                        if (stack_token_precedence==PREC_OPENING)
+                                        {
+                                            //Ensure ( matches ), [ matches ], { matches }
+                                            if (input_token!=stack_buffer[0]+3)
+                                            {
+                                                return py_error_set(PY_ERROR_SYNTAX);
+                                            }
+                                            else
+                                            {
+                                                //Found matching ( [ { on stack - figure out object type and element count
+                                                uint16_t element_data=*(uint16_t *)(stack_buffer+1);
+                                                uint16_t element_count=element_data&FLAG_COUNT_MASK;
+                                                
+                                                //debug("%X %X\n",element_data,element_count);
+
+                                                if (stack_buffer[0]==TOKEN_LPAREN)
+                                                {
+                                                    //Found ( so must be function, tuple, or expression
+
+                                                    //Adjust element count
+                                                    if (last_interpreter_state!=STATE_LPAREN)
+                                                    {
+                                                        //Parentheses not empty - increment element count
+                                                        element_count++;
+                                                    }
+                                                    if (exec_flags&FLAG_COMMA_LAST)
+                                                    {
+                                                        //Empty element at end like (1,) so decrease count
+                                                        element_count--;
+                                                    }
+                                                    
+                                                    //Preset element count since used by most options below
+                                                    *(uint16_t *)(stack_buffer+1)=element_count;
+
+                                                    if (element_data&FLAG_FUNC_DEREF)
+                                                    {
+                                                        //Function
+                                                        if (exec_flags&FLAG_COMMA_LAST)
+                                                        {
+                                                            //No support for default args so last arg can't be empty
+                                                            //Could add support for default args here
+                                                            return py_error_set(PY_ERROR_MISSING_ARG);
+                                                        }
+                                                        if (element_count>PY_FUNC_MAX_ARGS)
+                                                        {
+                                                            //Limit max function arg count so it fits in one byte
+                                                            return py_error_set(PY_ERROR_TOO_MANY_ARGS);
+                                                        }
+                                                        stack_buffer[0]=TOKEN_FUNC;
+                                                        stack_buffer[1]=element_count;
+                                                        if (py_append(compile_target,stack_buffer,2)) return py->error_num;
+                                                    }
+                                                    else
+                                                    {
+                                                        //Tuple or expression
+                                                        if ((element_count==1)&&(!(exec_flags&FLAG_COMMA_LAST)))
+                                                        {
+                                                            //Expression - only one element and no empty arg like (1,)
+                                                            //No special handling
+                                                        }
+                                                        else
+                                                        {
+                                                            //Tuple - empty () or one element with comma (1,) or more than one element
+                                                            stack_buffer[0]=TOKEN_TUPLE;
+                                                            if (py_append(compile_target,stack_buffer,3)) return py->error_num;
+                                                        }
+                                                    }
+                                                }
+                                                else if (stack_buffer[0]==TOKEN_LSBRACKET)
+                                                {
+                                                    //Found [ so must be list or indexing of list or dict
+                                                    if (element_data&FLAG_LIST_MASK)
+                                                    {
+                                                        //Slice since at least one colon
+                                                        if ((element_data&FLAG_FUNC_DEREF)==false)
+                                                        {
+                                                            //Error - slice must be attached to value like x[:] not [:] alone
+                                                            return py_error_set(PY_ERROR_SYNTAX);
+                                                        }
+
+                                                        //Count of colons in slice
+                                                        element_count=2-((element_data&FLAG_LIST_MASK)>>FLAG_SHIFT_COUNT);
+                                                        if (exec_flags&FLAG_COLON_LAST) element_count++;
+                                                       
+                                                        //Insert None if any slice numbers missing at end since [::] == [None:None:None] 
+                                                        stack_buffer[0]=TOKEN_NONE_OBJ;
+                                                        for (int i=0;i<element_count;i++)
+                                                        {
+                                                            if (py_append(compile_target,stack_buffer,1)) return py->error_num;
+                                                        }
+
+                                                        //Slice
+                                                        stack_buffer[0]=TOKEN_SLICE_INDEX;
+                                                        if (py_append(compile_target,stack_buffer,1)) return py->error_num;
+                                                    }
+                                                    else
+                                                    {
+                                                        //No colons so list or indexing of list or dict
+
+                                                        //Adjust element count
+                                                        element_count++;    //no check for [] since interpreter state machine catches
+                                                        if (exec_flags&FLAG_COMMA_LAST)
+                                                        {
+                                                            //Empty element at end like [1,2,] so decrease count
+                                                            element_count--;
+                                                        }
+
+                                                        //Element count used for dict and set below
+                                                        *(uint16_t *)(stack_buffer+1)=element_count;
+
+                                                        if (element_data&FLAG_FUNC_DEREF)
+                                                        {
+                                                            //Indexing - either single element like x[1] or tuple like x[1,2] or x[1,]
+                                                            if ((element_count==1)&&(!(exec_flags&FLAG_COMMA_LAST)))
+                                                            {
+                                                                //Single element indexing like x[1] - no need to convert to tuple
+                                                                //Index token written below
+                                                            }
+                                                            else
+                                                            {
+                                                                //Tuple indexing - create tuple then index
+                                                                stack_buffer[0]=TOKEN_TUPLE;
+                                                                if (py_append(compile_target,stack_buffer,3)) return py->error_num;
+                                                            }
+                                                            //Index in both if and else cases above
+                                                            stack_buffer[0]=TOKEN_INDEX;
+                                                            if (py_append(compile_target,stack_buffer,1)) return py->error_num;
+                                                        }
+                                                        else
+                                                        {
+                                                            //List
+                                                            stack_buffer[0]=TOKEN_LIST;
+                                                            if (py_append(compile_target,stack_buffer,3)) return py->error_num;
+                                                        }
+                                                    }
+                                                }
+                                                else if (stack_buffer[0]==TOKEN_LCBRACKET)
+                                                {
+                                                    //Found { so must be dict or set
+
+                                                    //Adjust element count
+                                                    if (last_interpreter_state!=STATE_LCBRACKET)
+                                                    {
+                                                        //Brackets not empty - increment element count
+                                                        element_count++;
+                                                    }
+                                                    if (exec_flags&FLAG_COMMA_LAST)
+                                                    {
+                                                        //Empty element at end like {1:2,} so decrease count
+                                                        element_count--;
+                                                    }
+
+                                                    //Element count used for dict and set below
+                                                    *(uint16_t *)(stack_buffer+1)=element_count;
+                                                    
+                                                    //Determine if set or dictionary
+                                                    uint16_t temp_flags=element_data&FLAG_DICT_SET_MASK;
+                                                    if (temp_flags==PARSE_BEGIN)
+                                                    {
+                                                        if (element_count==0)
+                                                        {
+                                                            //Empty dictionary, ie {}
+                                                            stack_buffer[0]=TOKEN_DICT;
+                                                        }
+                                                        else
+                                                        {
+                                                            //Set with one item so no commas, ie {1}
+                                                            stack_buffer[0]=TOKEN_SET;
+                                                        }
+                                                    }
+                                                    else if (temp_flags==PARSE_SET)
+                                                    {
+                                                        //Set with at least one comma, ie {1,2}
+                                                        stack_buffer[0]=TOKEN_SET;
+                                                    }
+                                                    else if (temp_flags==PARSE_DICT_COMMA_NEXT)
+                                                    {
+                                                        if (exec_flags&FLAG_COLON_LAST)
+                                                        {
+                                                            //Error - comma expected next but nothing after colon, ie {1:}
+                                                            return py_error_set(PY_ERROR_SYNTAX);
+                                                        }
+                                                        //Dictionary, ie {1:2}
+                                                        stack_buffer[0]=TOKEN_DICT;
+                                                    }
+                                                    else if (temp_flags==PARSE_DICT_COLON_NEXT)
+                                                    {
+                                                        if ((exec_flags&FLAG_COMMA_LAST)==false)
+                                                        {
+                                                            //Error - missing colon, ie {1:2,3}
+                                                            return py_error_set(PY_ERROR_SYNTAX);
+                                                        }
+
+                                                        //Dictionary with empty element at end, ie {1:2,}
+                                                        stack_buffer[0]=TOKEN_DICT;
+                                                    }
+                                                    if (py_append(compile_target,stack_buffer,3)) return py->error_num;
+                                                }
+                                                break;
+                                            }
+                                        }
+                                        else 
+                                        {
+                                            //Compile operator - no special handling
+                                            if (py_append(compile_target,stack_buffer,1)) return py->error_num;
+                                        }
+                                    }
+                                }
+                            }
+                            else if ((input_token_precedence==PREC_COMMA)||
+                                    (input_token_precedence==PREC_COLON))
+                            {
+                                //Compile pending operators
+                                while(1)
+                                {
+                                    if (py_custom_pop(stack_buffer,POP_OPERATORS)==false)
+                                    {
+                                        //Reached end of stack - no more operators left to pop and compile
+                                        break;
+                                    }
+
+                                    //Compile operator
+                                    if (py_append(compile_target,stack_buffer,1)) return py->error_num;
+                                }
+                                
+                                //Find ( { [ to edit its attached flags and comma count
+                                obj_ptr=py_peek_stack(NULL,POP_OPENINGS); 
+
+                                //Used for comma and colon
+                                uint16_t *element_data=(uint16_t *)(obj_ptr+1);
+
+                                //Increase element count
+                                if (input_token_precedence==PREC_COMMA)
+                                {
+                                    //Find ( [ or { on stack and increase comma count in data stored on stack following it
+                                    if (obj_ptr==NULL) 
+                                    {
+                                        //No ( [ { on stack so use count of top-level commas ie 1,2 without parentheses
+                                        element_data=&top_comma_count;
+                                    }
+                                    else
+                                    {
+                                        if (*obj_ptr==TOKEN_LSBRACKET)
+                                        {
+                                            //Found [ so make sure not slice, ie [1:2, 
+                                            if ((*element_data)&FLAG_LIST_MASK)
+                                            {
+                                                //FLAG_LIST_MASK masks 2 bits holding count of colons encountered - should be 0
+                                                return py_error_set(PY_ERROR_SYNTAX);
+                                            }
+                                        }
+                                        else if (*obj_ptr==TOKEN_LCBRACKET)
+                                        {
+                                            //Found { so process state change for dict parsing
+                                            uint16_t temp_flags=((*element_data)&FLAG_DICT_SET_MASK);
+                                            if (temp_flags==PARSE_BEGIN) temp_flags=PARSE_SET;
+                                            else if (temp_flags==PARSE_DICT_COMMA_NEXT) temp_flags=PARSE_DICT_COLON_NEXT;
+                                            else if (temp_flags==PARSE_DICT_COLON_NEXT)
+                                            {
+                                                //Error - expecting colon but found comma, ie {1:2,3,
+                                                return py_error_set(PY_ERROR_SYNTAX);
+                                            }
+                                            else
+                                            {
+                                                //No handling for PARSE_SET since no change on comma
+                                            }
+
+                                            //Write modified flags back
+                                            *element_data=(((*element_data)&~FLAG_DICT_SET_MASK)|temp_flags);
+                                        }
+                                        else
+                                        {
+                                            //No extra processing for (
+                                        }
+                                    }
+
+                                    //Increase count and leave other flags intact
+                                    uint16_t temp_count=((*element_data)&FLAG_COUNT_MASK)+1;
+                                    if (temp_count>FLAG_COUNT_MASK) return py_error_set(PY_ERROR_ELEMENT_OVERFLOW); 
+                                    *element_data=(((*element_data)&~FLAG_COUNT_MASK)|temp_count);
+                                }
+                                else if (input_token_precedence==PREC_COLON)
+                                {
+                                    if ((obj_ptr==NULL)||
+                                        (*obj_ptr==TOKEN_LPAREN))
+                                    {
+                                        //No [ { on stack or found ( which doesn't allow colon 
+                                        return py_error_set(PY_ERROR_SYNTAX);
+                                    }
+                                    
                                     if (*obj_ptr==TOKEN_LSBRACKET)
                                     {
-                                        //Found [ so make sure not slice, ie [1:2, 
-                                        if ((*element_data)&FLAG_LIST_MASK)
+                                        //Found [ so process as slice
+                                        if ((*element_data)&FLAG_COUNT_MASK)
                                         {
-                                            //FLAG_LIST_MASK masks 2 bits holding count of colons encountered - should be 0
-                                            return py_error_set(PY_ERROR_SYNTAX,0);
+                                            //Error - no colons allowed if commas have appeared, ie [1,2:3
+                                            return py_error_set(PY_ERROR_SYNTAX);
+                                        }
+
+                                        //Increase count of colons encountered
+                                        if (((*element_data)&FLAG_LIST_MASK)==(2<<FLAG_SHIFT_COUNT))
+                                        {
+                                            //Error - slice already has two colons, can't add third, ie [::: 
+                                            return py_error_set(PY_ERROR_SYNTAX);
+                                        }
+
+                                        //Increase colon count by one
+                                        *element_data+=(1<<FLAG_SHIFT_COUNT);
+                                        
+                                        //Insert None as necessary as [:] and [::] == [None:None:None]
+                                        if ((last_interpreter_state==STATE_LSBRACKET)||
+                                            (exec_flags&FLAG_COLON_LAST))
+                                        {
+                                            stack_buffer[0]=TOKEN_NONE_OBJ;
+                                            if (py_append(compile_target,stack_buffer,1)) return py->error_num;
                                         }
                                     }
                                     else if (*obj_ptr==TOKEN_LCBRACKET)
                                     {
                                         //Found { so process state change for dict parsing
                                         uint16_t temp_flags=((*element_data)&FLAG_DICT_SET_MASK);
-                                        if (temp_flags==PARSE_BEGIN) temp_flags=PARSE_SET;
-                                        else if (temp_flags==PARSE_DICT_COMMA_NEXT) temp_flags=PARSE_DICT_COLON_NEXT;
-                                        else if (temp_flags==PARSE_DICT_COLON_NEXT)
+                                        if (temp_flags==PARSE_BEGIN) temp_flags=PARSE_DICT_COMMA_NEXT;
+                                        else if (temp_flags==PARSE_SET)
                                         {
-                                            //Error - expecting colon but found comma, ie {1:2,3,
-                                            return py_error_set(PY_ERROR_SYNTAX,0);
+                                            //Error - no colon allowed in set, ie {1,2:
+                                            return py_error_set(PY_ERROR_SYNTAX);
                                         }
-                                        else
+                                        else if (temp_flags==PARSE_DICT_COLON_NEXT) temp_flags=PARSE_DICT_COMMA_NEXT;
+                                        else if (temp_flags==PARSE_DICT_COMMA_NEXT)
                                         {
-                                            //No handling for PARSE_SET since no change on comma
+                                            //Error - expecting comma but found colon, ie {1:2:
+                                            return py_error_set(PY_ERROR_SYNTAX);
                                         }
 
                                         //Write modified flags back
                                         *element_data=(((*element_data)&~FLAG_DICT_SET_MASK)|temp_flags);
                                     }
-                                    else
-                                    {
-                                        //No extra processing for (
-                                    }
                                 }
-
-                                //Increase count and leave other flags intact
-                                uint16_t temp_count=((*element_data)&FLAG_COUNT_MASK)+1;
-                                if (temp_count>FLAG_COUNT_MASK) return py_error_set(PY_ERROR_ELEMENT_OVERFLOW,0); 
-                                *element_data=(((*element_data)&~FLAG_COUNT_MASK)|temp_count);
                             }
-                            else if (input_token_precedence==PREC_COLON)
+                            else if (input_token_precedence==PREC_ASSIGN)
                             {
-                                if ((obj_ptr==NULL)||
-                                    (*obj_ptr==TOKEN_LPAREN))
+                                //Assigning values: = += -= etc
+                                if (py_custom_pop(stack_buffer, POP_END_LINE))
                                 {
-                                    //No [ { on stack or found ( which doesn't allow colon 
-                                    return py_error_set(PY_ERROR_SYNTAX,0);
+                                    //Error: ( [ { or operator left on stack
+                                    return py_error_set(PY_ERROR_SYNTAX);
                                 }
-                                
-                                if (*obj_ptr==TOKEN_LSBRACKET)
+                                if (last_interpreter_state!=STATE_VAL)
                                 {
-                                    //Found [ so process as slice
-                                    if ((*element_data)&FLAG_COUNT_MASK)
-                                    {
-                                        //Error - no colons allowed if commas have appeared, ie [1,2:3
-                                        return py_error_set(PY_ERROR_SYNTAX,0);
-                                    }
-
-                                    //Increase count of colons encountered
-                                    if (((*element_data)&FLAG_LIST_MASK)==(2<<FLAG_SHIFT_COUNT))
-                                    {
-                                        //Error - slice already has two colons, can't add third, ie [::: 
-                                        return py_error_set(PY_ERROR_SYNTAX,0);
-                                    }
-
-                                    //Increase colon count by one
-                                    *element_data+=(1<<FLAG_SHIFT_COUNT);
-                                    
-                                    //Insert None as necessary as [:] and [::] == [None:None:None]
-                                    if ((last_interpreter_state==STATE_LSBRACKET)||
-                                        (exec_flags&FLAG_COLON_LAST))
-                                    {
-                                        stack_buffer[0]=TOKEN_NONE_OBJ;
-                                        py_append(compile_target,stack_buffer,1);
-                                    }
-                                }
-                                else if (*obj_ptr==TOKEN_LCBRACKET)
-                                {
-                                    //Found { so process state change for dict parsing
-                                    uint16_t temp_flags=((*element_data)&FLAG_DICT_SET_MASK);
-                                    if (temp_flags==PARSE_BEGIN) temp_flags=PARSE_DICT_COMMA_NEXT;
-                                    else if (temp_flags==PARSE_SET)
-                                    {
-                                        //Error - no colon allowed in set, ie {1,2:
-                                        return py_error_set(PY_ERROR_SYNTAX,0);
-                                    }
-                                    else if (temp_flags==PARSE_DICT_COLON_NEXT) temp_flags=PARSE_DICT_COMMA_NEXT;
-                                    else if (temp_flags==PARSE_DICT_COMMA_NEXT)
-                                    {
-                                        //Error - expecting comma but found colon, ie {1:2:
-                                        return py_error_set(PY_ERROR_SYNTAX,0);
-                                    }
-
-                                    //Write modified flags back
-                                    *element_data=(((*element_data)&~FLAG_DICT_SET_MASK)|temp_flags);
+                                    //Error: no value to assign to or incomplete like 2+
+                                    return py_error_set(PY_ERROR_SYNTAX);
                                 }
                             }
-                        }
-                        else if (input_token_precedence==PREC_ASSIGN)
-                        {
-                            //Assigning values: = += -= etc
-                            if (py_custom_pop(stack_buffer, POP_END_LINE))
+                            else
                             {
-                                //Error: ( [ { or operator left on stack
-                                return py_error_set(PY_ERROR_SYNTAX,0);
-                            }
-                            if (last_interpreter_state!=STATE_VAL)
-                            {
-                                //Error: no value to assign to or incomplete like 2+
-                                return py_error_set(PY_ERROR_SYNTAX,0);
-                            }
-                        }
-                        else
-                        {
-                            //All other operators - no special handling
-                            if (py->sp_count!=0)
-                            {
-                                //Operator associativity
-                                switch (input_token)
+                                //All other operators - no special handling
+                                if (py->sp_count!=0)
                                 {
-                                    case TOKEN_EXP:
-                                    case TOKEN_INVERT:
-                                    case TOKEN_NEG:
-                                    case TOKEN_PLUS:
-                                    case TOKEN_BOOL_NOT:
-                                        token_left_assoc=false;
-                                        break;
-                                    default:
-                                        token_left_assoc=true;
-                                        break;
-                                }
-                               
-                                //Pop operators from stack
-                                obj_ptr=NULL;
-                                while(1)
-                                {
-                                    obj_ptr=py_peek_stack(obj_ptr,POP_OPERATORS);
-                                    if (obj_ptr==NULL)
+                                    //Operator associativity
+                                    switch (input_token)
                                     {
-                                        //Done - reached ( { [ : or end of stack
-                                        break;
+                                        case TOKEN_EXP:
+                                        case TOKEN_INVERT:
+                                        case TOKEN_NEG:
+                                        case TOKEN_PLUS:
+                                        case TOKEN_BOOL_NOT:
+                                            token_left_assoc=false;
+                                            break;
+                                        default:
+                                            token_left_assoc=true;
+                                            break;
                                     }
-                                    stack_token_precedence=py_find_precedence(*obj_ptr);
-                                    if (((token_left_assoc==true)&&(stack_token_precedence<=input_token_precedence))||
-                                            ((token_left_assoc==false)&&(stack_token_precedence<input_token_precedence)))
+                                   
+                                    //Pop operators from stack
+                                    obj_ptr=NULL;
+                                    while(1)
                                     {
-                                        //Compile token
-                                        py_append(compile_target,obj_ptr,1);
-                                        
-                                        //Remove token from stack
-                                        obj_ptr=py_remove_stack(obj_ptr);
-                                    }
-                                    else 
-                                    {
-                                        //Done - reached operator of higher precedence
-                                        break;
+                                        obj_ptr=py_peek_stack(obj_ptr,POP_OPERATORS);
+                                        if (obj_ptr==NULL)
+                                        {
+                                            //Done - reached ( { [ : or end of stack
+                                            break;
+                                        }
+                                        stack_token_precedence=py_find_precedence(*obj_ptr);
+                                        if (((token_left_assoc==true)&&(stack_token_precedence<=input_token_precedence))||
+                                                ((token_left_assoc==false)&&(stack_token_precedence<input_token_precedence)))
+                                        {
+                                            //Compile token
+                                            if (py_append(compile_target,obj_ptr,1)) return py->error_num;
+                                            
+                                            //Remove token from stack
+                                            obj_ptr=py_remove_stack(obj_ptr);
+                                        }
+                                        else 
+                                        {
+                                            //Done - reached operator of higher precedence
+                                            break;
+                                        }
                                     }
                                 }
+                                py_custom_push(&input_token,1,0);
                             }
-                            py_custom_push(&input_token,1,0);
-                        }
-                        break;
-                }   //switch for compiled values and operators processed by Shunting Yard
+                            break;
+                    }   //switch for compiled values and operators processed by Shunting Yard
 
-                if (input_symbol!=SYMBOL_SPACE)
-                {
-                    //Record whether last symbol was comma to recognize trailing comma, ie (1) vs (1,)
-                    if ((input_symbol==SYMBOL_OP)&&(input_token==TOKEN_COMMA)) exec_flags|=FLAG_COMMA_LAST;
-                    else exec_flags&=~FLAG_COMMA_LAST;
-                    //Record whether last symbol was colon to flag error on {1:}
-                    //Note this was previously handled by interpreter state machine but added exception for
-                    //STATE_BEGIN which is generated by both comma and colon. {1:2,} is not an error but no 
-                    //way to tell that from {1:} which is an error.
-                    if ((input_symbol==SYMBOL_OP)&&(input_token==TOKEN_COLON)) exec_flags|=FLAG_COLON_LAST;
-                    else exec_flags&=~FLAG_COLON_LAST;
-                }
+                    //Check for errors generated by syntax state machine
+                    if (compile_state==COMPILE_ERROR) return py_error_set(PY_ERROR_SYNTAX);
 
-            } //for - loop through tokens in symbol_queue   
-        } //if - processed next interpreter state
+                    if (input_symbol!=SYMBOL_SPACE)
+                    {
+                        //Record whether last symbol was comma to recognize trailing comma, ie (1) vs (1,)
+                        if ((input_symbol==SYMBOL_OP)&&(input_token==TOKEN_COMMA)) exec_flags|=FLAG_COMMA_LAST;
+                        else exec_flags&=~FLAG_COMMA_LAST;
+                        //Record whether last symbol was colon to flag error on {1:}
+                        //Note this was previously handled by interpreter state machine but added exception for
+                        //STATE_BEGIN which is generated by both comma and colon. {1:2,} is not an error but no 
+                        //way to tell that from {1:} which is an error.
+                        if ((input_symbol==SYMBOL_OP)&&(input_token==TOKEN_COLON)) exec_flags|=FLAG_COLON_LAST;
+                        else exec_flags&=~FLAG_COLON_LAST;
+                    }
+                } //for - loop through tokens in symbol_queue   
+            } //if - processed next interpreter state
 
-        //Make room in queue for next symbol
-        if (exec_flags&FLAG_VALUE)
-        {
-            //Queue was flushed above
-            symbol_queue[0].symbol=SYMBOL_NONE;
-            symbol_queue[1].symbol=SYMBOL_NONE;
+            //Make room in queue for next symbol
+            if (exec_flags&FLAG_VALUE)
+            {
+                //Queue was flushed above
+                symbol_queue[0].symbol=SYMBOL_NONE;
+                symbol_queue[1].symbol=SYMBOL_NONE;
+            }
+            symbol_queue[2]=symbol_queue[1];
+            symbol_queue[1]=symbol_queue[0];
         }
-        symbol_queue[2]=symbol_queue[1];
-        symbol_queue[1]=symbol_queue[0];
 
         //Advance source pointer by size of symbol
         text+=symbol_len;

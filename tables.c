@@ -279,12 +279,13 @@ COMPILE_ERROR, COMPILE_DEF_COLON, 0x8,                                          
 COMPILE_ERROR, 0, 0x0,                                                          //COMPILE_DEF_COLON
 COMPILE_ERROR, 0, 0x0,                                                          //COMPILE_NO_ARG
 COMPILE_ARG_OPT_EXP, COMPILE_ERROR, 0xCE,                                       //COMPILE_ARG_OPT
-COMPILE_ARG_OPT_EXP, COMPILE_ERROR, 0x2,                                        //COMPILE_ARG_OPT_OPT
-COMPILE_ARG_REQ_EXP, COMPILE_ERROR, 0xCE,                                       //COMPILE_ARG_REQ
-COMPILE_ARG_REQ_EXP, COMPILE_ERROR, 0x2,                                        //COMPILE_ARG_REQ_EXP
+COMPILE_ARG_OPT_EXP, COMPILE_ERROR, 0x2,                                        //COMPILE_ARG_OPT_EXP
+COMPILE_ERROR, COMPILE_ARG_REQ_VAR, 0x10,                                       //COMPILE_ARG_REQ
+COMPILE_ERROR, COMPILE_ARG_REQ_COMMA, 0x80,                                     //COMPILE_ARG_REQ_VAR
+COMPILE_ERROR, COMPILE_ARG_REQ_VAR, 0x10,                                       //COMPILE_ARG_REQ_COMMA
 };
 
 const uint32_t py_compile_variant_count=0x204A0;
 
-const uint32_t py_compile_done=0x14FD6F4;
+const uint32_t py_compile_done=0x54FD6F4;
 
