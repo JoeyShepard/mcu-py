@@ -922,14 +922,12 @@ py_error_t py_execute(const char *text)
                                 }
                                 else if (compile_state==COMPILE_DEF_ALPHA)
                                 {
-                                    //TODO: new function
                                     debug("def name: ");
                                     debug_cstr(text,symbol_len);
                                     debug("\n");
                                 }
                                 else if (compile_state==COMPILE_DEF_VAR)
                                 {
-                                    //TODO
                                     debug("def var: ");
                                     debug_cstr(text,symbol_len);
                                     debug("\n");
@@ -938,14 +936,12 @@ py_error_t py_execute(const char *text)
                                 {
                                     if (compile_token==TOKEN_KEYWORD_DEL)
                                     {
-                                        //TODO
                                         debug("del: ");
                                         debug_cstr(text,symbol_len);
                                         debug("\n");
                                     }
                                     else if (compile_token==TOKEN_KEYWORD_GLOBAL)
                                     {
-                                        //TODO
                                         debug("global: ");
                                         debug_cstr(text,symbol_len);
                                         debug("\n");

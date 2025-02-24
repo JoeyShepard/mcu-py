@@ -45,3 +45,7 @@ Other
 - maybe mentioned above but debug.c was very helpful
 - rigamarole of 'not in' - first one system then slightly smaller system with 3 item window
 - did not need but figured out can interleave two stacks if obvious from data type
+
+More notes
+- tables worked well for ia65 but ended up being lots of code for Python
+- compare to recursive descent
